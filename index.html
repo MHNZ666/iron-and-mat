@@ -385,6 +385,41 @@ var Rules=(function(){
   var APIKEY='iron-mat-api';
   function apiCfg(){try{return JSON.parse(localStorage.getItem(APIKEY)||'{}')}catch(e){return {}}}
   function setApi(o){try{localStorage.setItem(APIKEY,JSON.stringify(o))}catch(e){}}
+  /* ---------- GitHub backup (private repo, token kept on this phone only) ---------- */
+  var GHKEY='iron-mat-gh',GH={busy:false,msg:'',ask:false};
+  function ghCfg(){try{return JSON.parse(localStorage.getItem(GHKEY)||'{}')}catch(e){return {}}}
+  function setGh(o){try{localStorage.setItem(GHKEY,JSON.stringify(o))}catch(e){}}
+  function b64e(s){return btoa(unescape(encodeURIComponent(s)))}
+  function b64d(s){return decodeURIComponent(escape(atob(s.replace(/\s/g,''))))}
+  function ghReq(method,body){
+    var c=ghCfg(),url='https://api.github.com/repos/'+c.repo+'/contents/backup.json';
+    return fetch(url+(method==='GET'?'?t='+Date.now():''),{method:method,cache:'no-store',headers:{'Authorization':'Bearer '+c.token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},body:body?JSON.stringify(body):undefined})
+      .then(function(r){return r.json().catch(function(){return {}}).then(function(j){if(!r.ok&&!(method==='GET'&&r.status===404))throw {status:r.status};return r.status===404?null:j})});
+  }
+  function ghErr(e){var s=e&&e.status;return s===401?'GitHub did not accept the token. Make a new one and paste it again.':s===403?'The token cannot write to that repo. Give it Contents: Read and write.':s===404?'Repo not found. Check the name, and that the token includes it.':s===409||s===422?'Someone else changed the backup at the same moment. Tap Back up now again.':'Could not reach GitHub. Check your connection.'}
+  function ghReady(){var c=ghCfg();return !!(c.repo&&c.token)}
+  function ghBackup(manual){
+    if(!ghReady()||GH.busy)return;
+    var c=ghCfg();if(!manual&&c.last&&Date.now()-c.last<10*60000)return;
+    GH.busy=true;GH.msg='Backing up…';paintGh();
+    ghReq('GET').then(function(cur){
+      var d=new Date().toISOString().slice(0,16).replace('T',' ');
+      return ghReq('PUT',{message:'Backup '+d,content:b64e(JSON.stringify(S,null,1)),sha:cur&&cur.sha||undefined});
+    }).then(function(){var c2=ghCfg();c2.last=Date.now();setGh(c2);GH.msg='Backed up to GitHub just now.'},function(e){GH.msg=ghErr(e)})
+      .then(function(){GH.busy=false;paintGh()});
+  }
+  function ghRestore(){
+    if(!ghReady()||GH.busy)return;
+    GH.busy=true;GH.msg='Fetching backup…';paintGh();
+    ghReq('GET').then(function(cur){
+      if(!cur||!cur.content)throw {status:0,none:true};
+      var o=JSON.parse(b64d(cur.content));if(!o||!o.tm)throw {status:0,bad:true};
+      S=Object.assign(defaults(),o);if(S.unit!=='kg')convert('kg');save();GH.msg='Restored from GitHub.';U.view='today';
+    }).catch(function(e){GH.msg=e&&e.none?'No backup in that repo yet.':e&&e.bad?'The backup file is not readable.':ghErr(e)})
+      .then(function(){GH.busy=false;GH.ask=false;V()});
+  }
+  function paintGh(){var m=$('ghmsg');if(m)m.textContent=GH.msg||ghStatus()}
+  function ghStatus(){var c=ghCfg();return !ghReady()?'Not set up.':c.last?'Last backup: '+new Date(c.last).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})+'.':'Set up. No backup yet.'}
   function inClaude(){return !!(window.claude&&window.claude.use)}
   function canReview(){var c=apiCfg();return inClaude()||!!(c.url&&c.code)}
 
@@ -818,6 +853,14 @@ var Rules=(function(){
       '<div class="stack" style="margin-top:10px"><label class="f">Server address<input type="url" inputmode="url" autocomplete="off" id="apiurl" value="'+esc(ac.url||'')+'" placeholder="https://….workers.dev" style="font-size:15px;text-align:left"></label>'+
       '<label class="f">Access code<input type="password" autocomplete="off" id="apicode" value="'+esc(ac.code||'')+'" style="font-size:15px;text-align:left"></label>'+
       '<button class="btn w" type="button" data-act="apisave">Save server details</button><div class="note" id="apimsg" style="margin:0">'+(inClaude()?'You are inside Claude now, so reviews use your Claude account.':ac.url?'Saved.':'Not set up.')+'</div></div></div>';
+    var gc=ghCfg();
+    h+='<h2>GitHub backup</h2><div class="card"><div class="note" style="margin:0">Saves your log to a private GitHub repo after each session, and lets you restore it on any phone. The token stays on this phone only.</div>'+
+      '<div class="stack" style="margin-top:10px"><label class="f">Private repo<input type="text" autocomplete="off" autocapitalize="off" id="ghrepo" value="'+esc(gc.repo||'MHNZ666/iron-and-mat-data')+'" style="font-size:15px;text-align:left"></label>'+
+      '<label class="f">Access token<input type="password" autocomplete="off" id="ghtoken" value="'+esc(gc.token||'')+'" placeholder="github_pat_…" style="font-size:15px;text-align:left"></label>'+
+      '<button class="btn w" type="button" data-act="ghsave">Save GitHub details</button>'+
+      '<button class="btn w" type="button" data-act="ghnow"'+(ghReady()?'':' disabled')+'>Back up now</button>'+
+      '<button class="btn w" type="button" data-act="ghrestore"'+(ghReady()?'':' disabled')+'>'+(GH.ask?'Tap again: replace this phone’s log':'Restore from GitHub')+'</button>'+
+      '<div class="note" id="ghmsg" style="margin:0" aria-live="polite">'+esc(GH.msg||ghStatus())+'</div></div></div>';
     h+='<h2>Backup</h2><div class="card"><button class="btn w" type="button" data-act="copy">Copy backup</button><div class="note" id="bkmsg">'+(U.bk||'Copies everything to your clipboard. Paste it below on any device to restore.')+'</div>'+
        '<textarea id="bkbox" placeholder="Paste a backup here" aria-label="Backup text" style="margin-top:10px"></textarea><button class="btn w" type="button" data-act="restore" style="margin-top:10px">Restore from backup</button></div>';
     h+='<h2>Danger zone</h2><button class="btn w" type="button" data-act="wipe">'+(U.ask?'Tap again to erase everything':'Erase all data')+'</button>';
@@ -903,15 +946,15 @@ var Rules=(function(){
     else if(a==='pclear'){var key2=lkey(D.id)+'-'+U.pf.id;delete lg.pain[U.pf.id];S.pain=S.pain.filter(function(x){return x.k!==key2});U.pf=null}
     else if(a==='alt'){if(d.a)S.alts[d.id]=d.a;else delete S.alts[d.id]}
     else if(a==='seq'){startSeq(d.k==='zone2'?'Zone 2':d.k==='int'?'Intervals':d.k==='sprint'?'Sprints':d.k==='hang'?'Hangs':d.k==='couch'?'Couch stretch':'Warm-up',seqFor(d.k));if(lg){touch(lg);save()}return}
-    else if(a==='finish'){if(!lg.t0)touch(lg);lg.mins=Math.max(1,Math.round(((lg.tl||Date.now())-lg.t0)/60000));lg.done=true;lg.skipped=false;stopTimer();U.lv=null;U.copied=''}
+    else if(a==='finish'){if(!lg.t0)touch(lg);lg.mins=Math.max(1,Math.round(((lg.tl||Date.now())-lg.t0)/60000));lg.done=true;lg.skipped=false;stopTimer();U.lv=null;U.copied='';setTimeout(function(){ghBackup(true)},500)}
     else if(a==='copywhoop'){copyText(whoop(D,lg),function(){U.copied='whoop';V()},'whoopbox');return}
     else if(a==='skip'){lg.skipped=true;lg.done=false;U.view='today';stopTimer()}
     else if(a==='unskip'){lg.skipped=false}
     else if(a==='heavy'){S.heavy=!S.heavy}
-    else if(a==='nextweek'){S.week++;S.reviewDue=true}
+    else if(a==='nextweek'){S.week++;S.reviewDue=true;setTimeout(function(){ghBackup(false)},500)}
     else if(a==='plan'){U.view='next';U.nc={};S.reviewDue=true}
     else if(a==='nc'){U.nc[d.k]=d.m}
-    else if(a==='startcycle'){LIFTS.forEach(function(L){S.tm[L.k]=newTm(L.k,U.nc[L.k]||'add')});S.cycle++;S.week=0;U.view='today'}
+    else if(a==='startcycle'){LIFTS.forEach(function(L){S.tm[L.k]=newTm(L.k,U.nc[L.k]||'add')});S.cycle++;S.week=0;U.view='today';setTimeout(function(){ghBackup(true)},500)}
     else if(a==='ptab'){U.pTab=d.k}
     else if(a==='set'){S[d.p]=(d.p==='small')?d.v==='1':d.v}
     else if(a==='bwlog'){var w=parseFloat($('bwin').value);if(w>0){var t=today();if(S.bw.length&&S.bw[S.bw.length-1].d===t)S.bw[S.bw.length-1].w=w;else S.bw.push({d:t,w:w})}}
@@ -919,6 +962,11 @@ var Rules=(function(){
     else if(a==='undismiss'){delete S.dismiss[d.id]}
     else if(a==='applytm'){var ah=A.ahead[d.k];if(ah)S.tm[d.k]=ah.suggest}
     else if(a==='claude'){runClaude();return}
+    else if(a==='ghsave'){var rp=$('ghrepo').value.trim().replace(/^https:\/\/github.com\//,'').replace(/\/$/,''),tk=$('ghtoken').value.trim();
+      if(rp&&!/^[\w.-]+\/[\w.-]+$/.test(rp)){GH.msg='Repo should look like MHNZ666/iron-and-mat-data.';paintGh();return}
+      var o=ghCfg();o.repo=rp;o.token=tk;setGh(o);GH.msg=rp&&tk?'Saved. Tap Back up now to test it.':'Cleared.';V();return}
+    else if(a==='ghnow'){ghBackup(true);return}
+    else if(a==='ghrestore'){if(!GH.ask){GH.ask=true;V();return}ghRestore();return}
     else if(a==='apisave'){var url=$('apiurl').value.trim(),code=$('apicode').value.trim(),m=$('apimsg');
       if(url&&!/^https:\/\//.test(url)){m.textContent='The address must start with https://';return}
       setApi({url:url,code:code});m.textContent=url&&code?'Saved. Try Review my training.':'Cleared.';return}

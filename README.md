@@ -5,7 +5,15 @@ A 5-day, 45-minute gym plan for BJJ: 5/3/1 strength, knees-over-toes joint work 
 The app is a single page (`index.html`) served by GitHub Pages:
 https://mhnz666.github.io/iron-and-mat/
 
-Training data stays on the phone (browser storage). Use **Settings → Copy backup** now and then.
+Training data stays on the phone (browser storage). It can also back up to a **private** repo (see below). Never back up to this repo: it is public.
+
+## GitHub backup
+
+1. Create a private repo named `iron-and-mat-data` (leave it empty or add a README).
+2. Create a fine-grained token at github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens. Repository access: **Only select repositories** → `iron-and-mat-data`. Permissions: **Contents: Read and write**. Set an expiry (for example one year).
+3. In the app: Settings → GitHub backup. Paste the token, check the repo name, Save, then tap Back up now.
+
+The app backs up after each finished session and each new week or cycle, and you can restore on any phone. The token is kept on the phone only and is never written into the backup.
 
 ## Claude review outside Claude (optional)
 
