@@ -1,0 +1,6 @@
+# Cloudflare deploys the Iron and Mat server (worker/worker.js) from this repo.
+name = "iron-and-mat"
+main = "worker/worker.js"
+compatibility_date = "2025-01-01"
+# Keep the variables and secrets set in the Cloudflare dashboard.
+keep_vars = true
