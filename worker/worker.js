@@ -157,10 +157,48 @@ export default {
       if (!env.ANTHROPIC_API_KEY) return reply(501, { error: "Instant reviews are not set up on this server." });
       const prompt = String(body.prompt || "");
       if (!prompt || prompt.length > 80000) return reply(400, { error: "Missing or oversized prompt." });
+      const maxTok = Math.min(8000, Math.max(300, parseInt(body.max_tokens, 10) || 900));
+      if (body.stream) {
+        // Stream the report back as Claude writes it, so long reports never hit Cloudflare's 100-second limit.
+        // The body is plain text, ending with a line "\u0000STOP:<reason>" (or "\u0000ERROR:<message>").
+        const up = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: MODEL, max_tokens: maxTok, stream: true, messages: [{ role: "user", content: prompt }] }),
+        });
+        if (!up.ok || !up.body) return reply(up.status === 429 ? 429 : 502, { error: "Anthropic API error " + up.status });
+        const { readable, writable } = new TransformStream();
+        const w = writable.getWriter(), enc = new TextEncoder(), dec = new TextDecoder();
+        (async () => {
+          let buf = "", stop = "";
+          try {
+            const rd = up.body.getReader();
+            for (;;) {
+              const { done, value } = await rd.read();
+              if (done) break;
+              buf += dec.decode(value, { stream: true });
+              let i;
+              while ((i = buf.indexOf("\n")) >= 0) {
+                const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+                if (!line.startsWith("data:")) continue;
+                let ev; try { ev = JSON.parse(line.slice(5)); } catch (e) { continue; }
+                if (ev.type === "content_block_delta" && ev.delta && ev.delta.type === "text_delta") await w.write(enc.encode(ev.delta.text));
+                else if (ev.type === "message_delta" && ev.delta && ev.delta.stop_reason) stop = ev.delta.stop_reason;
+                else if (ev.type === "error") await w.write(enc.encode("\n\u0000ERROR:" + ((ev.error && ev.error.message) || "stream error")));
+              }
+            }
+            await w.write(enc.encode("\n\u0000STOP:" + stop));
+          } catch (e) {
+            try { await w.write(enc.encode("\n\u0000ERROR:connection")); } catch (e2) {}
+          }
+          try { await w.close(); } catch (e) {}
+        })();
+        return new Response(readable, { status: 200, headers: { ...cors, "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
+      }
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-        body: JSON.stringify({ model: MODEL, max_tokens: Math.min(8000, Math.max(300, parseInt(body.max_tokens, 10) || 900)), messages: [{ role: "user", content: prompt }] }),
+        body: JSON.stringify({ model: MODEL, max_tokens: maxTok, messages: [{ role: "user", content: prompt }] }),
       });
       if (!r.ok) return reply(r.status === 429 ? 429 : 502, { error: "Anthropic API error " + r.status });
       const j = await r.json();

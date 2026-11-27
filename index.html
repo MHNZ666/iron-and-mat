@@ -767,7 +767,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='5.3.2 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='5.3.3 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -1682,6 +1682,17 @@ var INFO={
   function srv(path,body){var c=apiCfg();
     return fetch(c.url.replace(/\/$/,'')+path,{method:'POST',headers:{'Content-Type':'application/json','X-Access-Code':c.code||''},body:JSON.stringify(body)})
       .then(function(r){return r.json().catch(function(){return {}}).then(function(j){if(!r.ok)throw {status:r.status,msg:j&&j.error};return j})})}
+  function srvReport(body){
+    // reports stream back as Claude writes them; an older server still answers with JSON
+    var c=apiCfg();body.stream=true;
+    return fetch(c.url.replace(/\/$/,'')+'/review',{method:'POST',headers:{'Content-Type':'application/json','X-Access-Code':c.code||''},body:JSON.stringify(body)}).then(function(r){
+      var ct=(r.headers&&r.headers.get&&r.headers.get('Content-Type'))||(r.text?'':'application/json');if(!ct&&r.json&&!r.text)ct='application/json';
+      if(/json/.test(ct))return r.json().catch(function(){return {}}).then(function(j){if(!r.ok)throw {status:r.status,msg:j&&j.error};return {text:j.text,stop:j.stop||''}});
+      return r.text().then(function(t){var k=t.lastIndexOf('\u0000'),tail=k>=0?t.slice(k+1):'',text=k>=0?t.slice(0,k):t;
+        if(/^ERROR:/.test(tail)&&!text.trim())throw {status:502,msg:tail.slice(6)};
+        return {text:text,stop:/^STOP:/.test(tail)?tail.slice(5).trim():(k<0?'max_tokens':'')}});
+    });
+  }
   function whConnect(){
     var c=apiCfg();if(!c.code){WH.msg='Enter your server access code first, then tap Save.';V();return}
     var st=Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2);try{localStorage.setItem('iron-mat-whoop-state',st)}catch(e){}
@@ -2268,7 +2279,7 @@ var INFO={
     var pr=periodRange(per),card=snapshot5(per),p=reportPrompt(per),done=function(text,stop){var j0=parseJSON(text),j=findReport(j0)||rescueReport(text);if(j&&!j.sections&&j.summary)j.sections=[{h:'Summary',t:String(j.summary)}];rp=normReport(j||{text:String(text||'').replace(/^[\s\S]*?\{/,'{')},'instant');if(!j)rp.title='Training report';if(stop==='max_tokens')rp.cut=true;rp.raw=String(text||'').slice(0,30000);if(!rp.sections.length&&!rp.text)rp.text=rp.raw?rp.raw.replace(/[{}\[\]"]/g,' ').replace(/\s+/g,' ').trim().slice(0,8000):'The report came back empty. Tap Create a report now to try again.';rp.per=per;rp.range=pr.label;rp.card=card;addReport(rp);U.ropen=rp.id;rp.seen=true;U.rbusy=false;save();V()},
       fail=function(msg){U.rbusy=false;U.rerr=msg;V()};
     if(inClaude()){window.claude.use('sample').then(function(sample){if(!sample)throw {code:'not_granted'};return sample(p,{modelTier:'complex',cache:false})}).then(function(r){done(r.text)},function(e){fail(e&&e.code==='rate_limited'?'Claude is busy. Try again in a few minutes.':'The report did not finish. Try again.')});return}
-    srv('/review',{prompt:p,max_tokens:per==='today'?6000:8000}).then(function(j){done(j.text,j.stop)},function(e){fail(e&&e.status===501?'Reports need the Anthropic key on your server.':srvErr(e,'Claude'))});
+    srvReport({prompt:p,max_tokens:per==='today'?6000:8000}).then(function(j){done(j.text,j.stop)},function(e){fail(e&&e.status===501?'Reports need the Anthropic key on your server.':srvErr(e,'Claude'))});
   }
   function applyR(r,type,k){
     if(type==='tm'){var v=Core.rnd(+r.tm[k],inc(),'near'),cur=+S.tm[k];if(v>0&&cur&&Math.abs(v-cur)/cur<=0.15){S.tm[k]=v;r.applied['tm-'+k]=true}}
