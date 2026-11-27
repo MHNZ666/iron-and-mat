@@ -767,7 +767,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='5.2.1 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='5.2.2 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -1891,6 +1891,7 @@ var INFO={
     $('repdot').hidden=!(S.reports||[]).some(function(r){return !r.seen});
     h=v==='onboard'?vOnboard():v==='today'?vToday():v==='session'?vSession():v==='review'?vReview():v==='reports'?vReports():v==='progress'?vProgress():v==='settings'?vSettings():vNext();
     if(U.rpick)h+=pickModal();else if(U.pf)h+=painModal();else if(U.info)h+=infoModal();else if(U.sw)h+=swapModal();else if(U.xw)h+=xModal();else if(U.cal)h+=dayModal();
+    if(UPD.v&&v!=='session')h=updBanner()+h;
     if(Safe.warn)h='<div class="card" role="alert" style="border-color:var(--warn,#e0a030)"><b>Your data is safe</b><div class="note" style="margin:4px 0 0">'+esc(Safe.warn)+'</div></div>'+h;
     var y=window.scrollY;$('view').innerHTML=h;
     var ct=$('cltext');if(ct){var t=U.cl&&U.cl.text!=null?U.cl.text:(S.claude?S.claude.text:'');ct.textContent=t}
@@ -2096,7 +2097,7 @@ var INFO={
     var secs=raw.slice(0,14).map(function(s){return {h:String(s&&(s.h||s.heading||s.title||s.name)||'').slice(0,60),t:String(s&&(s.t||s.text||s.body||s.content)||'').slice(0,3000)}}).filter(function(s){return s.t});
     return {id:(kind==='weekly'?'w':'i')+(r.date||'')+'-'+Date.now().toString(36),t:Date.now(),date:String(r.date||today()),kind:kind,title:String(r.title||(kind==='weekly'?'Weekly review':'Training report')).slice(0,90),
       text:String(r.text||'').slice(0,8000),sections:secs,changes:Array.isArray(r.changes)?r.changes.slice(0,8).map(function(x){return String(x).slice(0,300)}):[],
-      tm:r.tm&&typeof r.tm==='object'?r.tm:{},cut:!!r.cut,subs:cleanSubs(r.subs),targets:cleanTargets(r.targets),applied:{},seen:false,basedOn:String(r.basedOn||'')}
+      tm:r.tm&&typeof r.tm==='object'?r.tm:{},cut:!!r.cut,raw:r.raw?String(r.raw).slice(0,30000):'',subs:cleanSubs(r.subs),targets:cleanTargets(r.targets),applied:{},seen:false,basedOn:String(r.basedOn||'')}
   }
   function addReport(rp){S.reports=S.reports||[];if(rp.kind==='weekly'&&S.reports.some(function(x){return x.kind==='weekly'&&x.date===rp.date&&(x.text===rp.text||x.basedOn&&x.basedOn===rp.basedOn)}))return;S.reports.push(rp);if(S.reports.length>200)S.reports=S.reports.slice(-200);save()}
   function migrateReports(){var ch=false;S.reports=S.reports||[];
@@ -2167,6 +2168,11 @@ var INFO={
     ]).join('\n');
   }
   function parseJSON(t){var m=String(t||'').match(/\{[\s\S]*\}/);if(!m)return null;try{return JSON.parse(m[0])}catch(e){return null}}
+  function findReport(o,depth){
+    // the report object, even if Claude wrapped it, e.g. {"report": {...}}
+    if(!o||typeof o!=='object'||(depth||0)>4)return null;if(Array.isArray(o))return null;
+    if(o.sections||o.title||o.summary)return o;var ks=Object.keys(o);for(var i=0;i<ks.length;i++){var r=findReport(o[ks[i]],(depth||0)+1);if(r)return r}return null;
+  }
   function rescueReport(t){
     // a reply cut off part-way: keep every complete section, the title and the changes
     t=String(t||'');var un=function(s){try{return JSON.parse('"'+s+'"')}catch(e){return s}},secs=[],re=/"h"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"t"\s*:\s*"((?:[^"\\]|\\.)*)"/g,m;
@@ -2177,7 +2183,7 @@ var INFO={
   }
   function runReport(per){
     if(U.rbusy)return;U.rbusy=true;U.rerr='';U.rpick=false;V();
-    var pr=periodRange(per),card=snapshot5(per),p=reportPrompt(per),done=function(text,stop){var j=parseJSON(text)||rescueReport(text),rp=normReport(j||{text:String(text||'').replace(/^[\s\S]*?\{/,'{')},'instant');if(!j)rp.title='Training report';if(j&&j.cut||stop==='max_tokens')rp.cut=true;if(!rp.sections.length&&!rp.text)rp.text='The report came back empty. Tap Create a report now to try again.';rp.per=per;rp.range=pr.label;rp.card=card;addReport(rp);U.ropen=rp.id;rp.seen=true;U.rbusy=false;save();V()},
+    var pr=periodRange(per),card=snapshot5(per),p=reportPrompt(per),done=function(text,stop){var j0=parseJSON(text),j=findReport(j0)||rescueReport(text);if(j&&!j.sections&&j.summary)j.sections=[{h:'Summary',t:String(j.summary)}];rp=normReport(j||{text:String(text||'').replace(/^[\s\S]*?\{/,'{')},'instant');if(!j)rp.title='Training report';if(j&&j.cut||stop==='max_tokens')rp.cut=true;rp.raw=String(text||'').slice(0,30000);if(!rp.sections.length&&!rp.text)rp.text=rp.raw?rp.raw.replace(/[{}\[\]"]/g,' ').replace(/\s+/g,' ').trim().slice(0,8000):'The report came back empty. Tap Create a report now to try again.';rp.per=per;rp.range=pr.label;rp.card=card;addReport(rp);U.ropen=rp.id;rp.seen=true;U.rbusy=false;save();V()},
       fail=function(msg){U.rbusy=false;U.rerr=msg;V()};
     if(inClaude()){window.claude.use('sample').then(function(sample){if(!sample)throw {code:'not_granted'};return sample(p,{modelTier:'complex',cache:false})}).then(function(r){done(r.text)},function(e){fail(e&&e.code==='rate_limited'?'Claude is busy. Try again in a few minutes.':'The report did not finish. Try again.')});return}
     srv('/review',{prompt:p,max_tokens:per==='today'?4000:7500}).then(function(j){done(j.text,j.stop)},function(e){fail(e&&e.status===501?'Reports need the Anthropic key on your server.':srvErr(e,'Claude'))});
@@ -2541,6 +2547,7 @@ var INFO={
     else if(a==='iresolve'||a==='istop'){var is4=(S.issues||[]).filter(function(x){return x.id===d.id})[0];if(is4){is4.active=false;if(a==='iresolve')is4.resolved=today();else is4.stopped=today()}}
     else if(a==='evadd'){var et=$('evt').value.trim(),ed=$('evd').value;if(et&&ed){S.events=S.events||[];S.events.push({id:'e'+Date.now().toString(36),d:ed,t:et.slice(0,200)})}}
     else if(a==='evdel'){if(U.evdel===d.id){S.events=(S.events||[]).filter(function(x){return x.id!==d.id});U.evdel=null}else U.evdel=d.id}
+    else if(a==='doupd'){save();fetch(location.pathname,{cache:'reload'}).catch(function(){}).then(function(){location.replace(location.pathname+'?u='+Date.now())});return}
     else if(a==='goalset'){var gv=parseFloat($('goal-'+d.k).value);S.goals=S.goals||{};if(gv>0){var gs=goalSeries(d.k);S.goals[d.k]={to:gv,from:gs.length?gs[gs.length-1].v:null,set:today()}}else delete S.goals[d.k]}
     else if(a==='fbapply'){var ff=(A.findings||[]).filter(function(x){return x.id===d.id})[0];
       if(ff&&ff.act){if(ff.act.t==='tm'){S.undo={k:ff.act.k,from:S.tm[ff.act.k]};S.tm[ff.act.k]=ff.act.v;U.undoShow=true}else S.heavy=!!ff.act.v;S.dismiss[ff.id]=true}}
@@ -2592,7 +2599,13 @@ var INFO={
     else if(t.dataset.obw){U.obw=t.value}
     else if(t.dataset.pu){S.pu=t.value===''?'':Math.max(0,Math.round(v));save()}
   });
-  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'){whSync(false);whMatch();wiSync(false)}});
+  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'){whSync(false);whMatch();wiSync(false);checkUpdate()}});
+  /* ---------- tells you when a newer version is on GitHub, and loads it past Chrome's cache when you tap ---------- */
+  var UPD={v:null,t:0};
+  function checkUpdate(){if(Date.now()-UPD.t<60000||!/^https:/.test(location.protocol))return;UPD.t=Date.now();
+    fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){var m=t.match(/VERSION='([^']+)'/);if(m&&m[1]!==VERSION){UPD.v=m[1];V()}}).catch(function(){})}
+  function updBanner(){return UPD.v?'<div class="banner" style="border:1px solid var(--sig)"><b>Update ready: version '+esc(UPD.v.split(' ')[0])+'.</b> Your data stays as it is. <button type="button" class="btn s" data-act="doupd" style="margin-left:8px">Update now</button></div>':''}
+  setTimeout(checkUpdate,4000);
   whCallback();
   V();
   setTimeout(initSync,0);
