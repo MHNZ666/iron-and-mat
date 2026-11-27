@@ -7,6 +7,8 @@
 //   WHOOP_CLIENT_ID      Text    from the WHOOP developer dashboard
 //   WHOOP_CLIENT_SECRET  Secret  from the WHOOP developer dashboard
 //   ANTHROPIC_API_KEY    Secret  for reading cardio photos and instant Claude reviews
+//   WITHINGS_CLIENT_ID   Text    optional, from developer.withings.com, to read your scale directly
+//   WITHINGS_CLIENT_SECRET Secret optional, from the same Withings app
 
 const MODEL = "claude-sonnet-5-5";
 const WHOOP_TOKEN = "https://api.prod.whoop.com/oauth/oauth2/token";
@@ -65,6 +67,37 @@ export default {
       const j = await r.json().catch(() => ({}));
       if (!r.ok) return reply(r.status === 401 ? 401 : r.status === 429 ? 429 : 502, { error: "WHOOP returned " + r.status + "." });
       return reply(200, j);
+    }
+
+    // Withings scale: swap the login code for tokens, refresh them, and read weight and body composition
+    if (path === "/withings/token" || path === "/withings/refresh") {
+      if (!env.WITHINGS_CLIENT_ID || !env.WITHINGS_CLIENT_SECRET) return reply(500, { error: "Withings is not set up on the server." });
+      const form = new URLSearchParams({ action: "requesttoken", client_id: env.WITHINGS_CLIENT_ID, client_secret: env.WITHINGS_CLIENT_SECRET });
+      if (path === "/withings/token") {
+        if (!body.code || !body.redirect_uri) return reply(400, { error: "Missing code." });
+        form.set("grant_type", "authorization_code"); form.set("code", String(body.code)); form.set("redirect_uri", String(body.redirect_uri));
+      } else {
+        if (!body.refresh_token) return reply(400, { error: "Missing refresh token." });
+        form.set("grant_type", "refresh_token"); form.set("refresh_token", String(body.refresh_token));
+      }
+      const r = await fetch("https://wbsapi.withings.net/v2/oauth2", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.status !== 0 || !j.body) return reply(401, { error: "Withings login failed (" + (j.status != null ? j.status : r.status) + ")." });
+      return reply(200, { access_token: j.body.access_token, refresh_token: j.body.refresh_token, expires_in: j.body.expires_in });
+    }
+    if (path === "/withings/weight") {
+      if (!body.access_token) return reply(400, { error: "Missing token." });
+      const since = Math.max(0, Math.floor(+body.since || 0));
+      const form = new URLSearchParams({ action: "getmeas", meastypes: "1,6,8,76", category: "1", startdate: String(since), enddate: String(Math.floor(Date.now() / 1000)) });
+      const r = await fetch("https://wbsapi.withings.net/measure", { method: "POST", headers: { Authorization: "Bearer " + body.access_token, "Content-Type": "application/x-www-form-urlencoded" }, body: form });
+      const j = await r.json().catch(() => ({}));
+      if (j.status === 401 || r.status === 401) return reply(401, { error: "Withings token expired." });
+      if (!r.ok || j.status !== 0) return reply(502, { error: "Withings returned " + (j.status != null ? j.status : r.status) + "." });
+      const out = (j.body && j.body.measuregrps || []).map(g => {
+        const v = t => { const m = (g.measures || []).find(x => x.type === t); return m ? Math.round(m.value * Math.pow(10, m.unit) * 10) / 10 : null; };
+        return { t: g.date * 1000, w: v(1), fatPct: v(6), fatKg: v(8), muscleKg: v(76) };
+      }).filter(x => x.w);
+      return reply(200, { measures: out });
     }
 
     // Read a cardio machine screen from a photo (needs ANTHROPIC_API_KEY)

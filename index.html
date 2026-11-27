@@ -767,7 +767,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='4.10 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='5.0 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -781,7 +781,7 @@ var INFO={
     ex:{squat:{w:100,r:5},bench:{w:70,r:5},dead:{w:140,r:5},press:{w:47.5,r:5}},
     tm:{},cycle:1,week:0,logs:{},hist:[],loads:{},alts:{},pain:[],
     h:'',bw:[],pu:'',loadHist:{},dismiss:{},claude:null,reviewDue:false,u:0,
-    step:5,subs:{},custom:{},cardio:{},lnote:{},undo:null,wh:[],whoop:null,whw:[],extra:[],reports:[],ctarget:{},rw:{lvl:1,ok:0,hist:[]},meas:[]}}
+    step:5,subs:{},custom:{},cardio:{},lnote:{},undo:null,wh:[],whoop:null,whw:[],extra:[],reports:[],ctarget:{},rw:{lvl:1,ok:0,hist:[]},meas:[],issues:[],goals:{}}}
   /* ---------- data safety: nothing is overwritten without a copy being kept first ---------- */
   var SNAPKEY='iron-mat-snapshots',Safe={blocked:false,warn:''};
   function nLogs(o){var n=0;Object.keys(o&&o.logs||{}).forEach(function(k){var l=o.logs[k];if(l&&(l.done||l.t0))n++});return n}
@@ -816,8 +816,9 @@ var INFO={
   function mergeCustom(){Object.keys(S.custom||{}).forEach(function(k){EX[k]=S.custom[k]})}
   mergeCustom();
   setTimeout(function(){migrateReports();
+    S.goals=S.goals||{};if(!S.goals.bw&&S.onboarded){S.goals.bw={to:100,from:bwNow()?+bwNow():null,set:today()};save()}
     // sessions finished before set timing existed get an even split of their time across the sets done
-    try{var ch=false;Object.keys(S.logs).forEach(function(k){var l=S.logs[k],D=dayById(k.split('-')[2]);if(l.done&&l.t0&&!l.sets&&D){buildSets(D,l);ch=true}});if(ch){save();V()}}catch(e){}
+    try{var ch=false;Object.keys(S.logs).forEach(function(k){var l=S.logs[k],D=dayById(k.split('-')[2]);if(l.done&&l.t0&&!l.sets&&D){buildSets(D,l);ch=true}else if(l.done&&l.sets&&l.wh&&!l.hrs&&!l.hrEst){if(estHR(l))ch=true}});if(ch){save();V()}}catch(e){}
     setTimeout(function(){try{whMatch()}catch(e){}},1500)},0);
   if(S.unit!=='kg')convert('kg');
   var U={view:Safe.blocked?'settings':S.onboarded?'today':'onboard',day:null,pTab:'squat',cTab:'zone2',msg:'',nc:{},bk:'',ask:false,lv:null,cl:null,copied:'',pf:null,sw:null,info:null,photo:{},cal:null,calM:null,xw:null,ropen:null,rbusy:false,rerr:''};
@@ -878,7 +879,7 @@ var INFO={
       if(!r||typeof r.text!=='string')return;
       var old=S.remote||{};if(old.date===r.date&&old.text===r.text)return;
       S.remote={date:String(r.date||''),text:r.text.slice(0,6000),tm:r.tm&&typeof r.tm==='object'?r.tm:{},notes:Array.isArray(r.changes)?r.changes.slice(0,8).map(String):[],subs:cleanSubs(r.subs),applied:{},seen:false};
-      mergeCardio(r.cardio);addReport(normReport(r,'weekly'));
+      mergeCardio(r.cardio);var wr=normReport(r,'weekly');wr.per='week';wr.card=snapshot5('week');addReport(wr);
       save();V();
     }).catch(function(){});
   }
@@ -997,6 +998,102 @@ var INFO={
       if((sl!=null&&sl<7)||(r2!=null&&r2<50))F.push({id:'fb-energy',sev:'low',title:'Low energy lines up with your recovery',detail:'Low energy in '+le.length+' recent sessions'+(sl!=null?', averaging '+Math.round(sl*10)/10+' h of sleep':'')+(r2!=null?' and '+Math.round(r2)+'% recovery':'')+'. Sleep is the first lever. The program holds steady.'})}
     return F.filter(function(f){if(S.dismiss[f.id]){f.dismissed=true}return true});
   }
+  /* ---------- insights for the Train screen, Progress and reports ---------- */
+  function addDays(ds,n){var x=new Date(ds+'T12:00:00');x.setDate(x.getDate()+n);return ymdOf(x.getTime())}
+  function mondayOf(ds){var x=new Date(ds+'T12:00:00'),wd=(x.getDay()+6)%7;return addDays(ds,-wd)}
+  function loadRatio(endD){
+    // last 7 days of WHOOP strain against your average week over the last 28 days
+    var e=endD||today(),W=(S.wh||[]).filter(function(x){return x.strain!=null&&x.d<=e});if(W.length<10)return null;
+    var a7=0,a28=0;W.forEach(function(x){if(x.d>addDays(e,-7))a7+=+x.strain;if(x.d>addDays(e,-28))a28+=+x.strain});
+    var ch=a28/4;return ch>0?{acute:Math.round(a7*10)/10,chronic:Math.round(ch*10)/10,ratio:Math.round(a7/ch*100)/100}:null;
+  }
+  function readiness(ds){
+    var d=ds||today(),w=(S.wh||[]).filter(function(x){return x.d===d})[0];if(!w||w.rec==null)return null;
+    var parts=[],add=function(n,v,wt){if(v!=null&&!isNaN(v))parts.push({n:n,v:Math.max(0,Math.min(100,v)),wt:wt})};
+    add('Recovery',+w.rec,.45);add('Sleep',w.sleep!=null?+w.sleep:null,.2);
+    var lr=loadRatio(d);add('Load',lr?(lr.ratio<=1.05?100:lr.ratio>=1.6?20:100-(lr.ratio-1.05)*145):null,.2);
+    var pmax=0;S.pain.filter(function(x){return x.d>addDays(d,-7)}).forEach(function(x){if(x.v>pmax)pmax=x.v});
+    activeIssues().forEach(function(is){var r=(is.ratings||[]).slice(-1)[0];if(r&&+r.v>pmax)pmax=+r.v});
+    add('Pain',100-pmax*10,.15);
+    var tw=parts.reduce(function(s,x){return s+x.wt},0),sc=Math.round(parts.reduce(function(s,x){return s+x.v*x.wt},0)/tw);
+    return {score:sc,label:sc>=67?'Good to push':sc>=45?'Train as planned':'Go lighter today',parts:parts,load:lr,pain:pmax};
+  }
+  function readyCard(){
+    var r=readiness();if(!r)return '';var col=r.score>=67?'var(--ok)':r.score>=45?'var(--knee)':'var(--sig)';
+    return '<div class="card" style="margin-top:12px"><div class="row"><span><b style="font:700 26px var(--display);color:'+col+'">'+r.score+'</b> <b>Readiness · '+r.label+'</b></span></div><div class="note" style="margin:4px 0 0">'+r.parts.map(function(x){return x.n+' '+Math.round(x.v)}).join(' · ')+(r.load?' · 7-day strain '+r.load.ratio+'× your usual week':'')+'</div>'+
+      (r.score<45?'<div class="note">Keep the main lift, stop the last set with 2 or more reps in the tank, and drop the optional extras.':'')+(r.score<45?'</div>':'')+'</div>';
+  }
+  function estAt(k,ds){var best=0,lim=addDays(ds,-42);S.hist.forEach(function(h){if(h.lift===k&&h.d<=ds&&h.d>lim&&h.e>best)best=h.e});if(!best){S.hist.forEach(function(h){if(h.lift===k&&h.d<=ds&&h.e>best)best=h.e})}return best||null}
+  function bwAt(ds){var v=null;(S.bw||[]).forEach(function(x){if(x.d<=ds)v=+x.w});return v}
+  function z2eff(){return Object.keys(S.cardio).map(function(k){return S.cardio[k]}).filter(function(c){return c.mode==='zone2'&&num(c.w)&&num(c.hr)}).sort(function(a,b){return a.d<b.d?-1:1}).map(function(c){return {d:c.d,v:Math.round(num(c.w)/num(c.hr)*100)/100}})}
+  function effAt(ds){var a=z2eff().filter(function(x){return x.d<=ds}).slice(-3);return a.length?Math.round(avg(a.map(function(x){return x.v}))*100)/100:null}
+  function walkAt(ds){var v=null;((S.rw||{}).hist||[]).forEach(function(x){if(x.d<=ds)v=x.lvl});return v}
+  function scorecards(ds){
+    var d=ds||today(),cols=[d,addDays(d,-7),addDays(d,-28)],rows=[];
+    ['squat','bench','dead','press'].forEach(function(k){rows.push({n:Rules.NAMES[k]+' est. max',u:'kg',v:cols.map(function(c){var e=estAt(k,c);return e?Math.round(e):null})});
+      rows.push({n:Rules.NAMES[k]+' × bodyweight',u:'',v:cols.map(function(c){var e=estAt(k,c),b=bwAt(c);return e&&b?Math.round(e/b*100)/100:null})})});
+    rows.push({n:'Bodyweight',u:'kg',v:cols.map(bwAt),down:true});
+    rows.push({n:'Zone 2 watts per bpm',u:'',v:cols.map(effAt)});
+    rows.push({n:'Backward walk level',u:'',v:cols.map(walkAt)});
+    rows.push({n:'Pull-ups (best set)',u:'',v:[S.pu?+S.pu:null,null,null]});
+    return rows.filter(function(r){return r.v[0]!=null});
+  }
+  function scoreTable(rows){
+    var dl=function(a,b,down){if(a==null||b==null)return '–';var x=Math.round((a-b)*100)/100;if(!x)return '0';var good=down?x<0:x>0;return '<span style="color:'+(good?'var(--ok)':'var(--sig)')+'">'+(x>0?'+':'')+x+'</span>'};
+    return '<div style="overflow-x:auto"><table class="st"><tr><th></th><th>Now</th><th>vs 1 wk</th><th>vs 4 wk</th></tr>'+rows.map(function(r){return '<tr><td>'+esc(r.n)+'</td><td>'+r.v[0]+(r.u?' '+r.u:'')+'</td><td>'+dl(r.v[0],r.v[1],r.down)+'</td><td>'+dl(r.v[0],r.v[2],r.down)+'</td></tr>'}).join('')+'</table></div>';
+  }
+  function painTimeline(){
+    // per body part, average pain per week over the last 6 weeks (flags and weekly checks)
+    var start=mondayOf(addDays(today(),-35)),wks=[];for(var i=0;i<6;i++)wks.push(addDays(start,i*7));
+    var parts={};function put(part,d,v){if(!part||d<start)return;var wi=Math.min(5,Math.floor((new Date(d)-new Date(start))/(7*864e5)));parts[part]=parts[part]||[[],[],[],[],[],[]];parts[part][wi].push(+v)}
+    S.pain.forEach(function(x){put(x.part||'Knee',x.d,x.v)});(S.issues||[]).forEach(function(is){(is.ratings||[]).forEach(function(r){if(!r.base)put(is.part,r.d,r.v)})});
+    return Object.keys(parts).map(function(k){var a=parts[k].map(function(x){return x.length?Math.round(avg(x)*10)/10:null}),seen=a.filter(function(v){return v!=null});
+      var tr=seen.length<2?'New':seen[seen.length-1]<=seen[0]-1?'Improving':seen[seen.length-1]>=seen[0]+1?'Getting worse':'Steady';
+      var last=a.slice(-2).filter(function(v){return v!=null});if(seen.length&&!last.length)tr='Quiet lately';
+      return {part:k,weeks:a,trend:tr}});
+  }
+  function sleepPerf(){
+    // reps beaten on the last set, on good against poor recovery or sleep days
+    var g=[],b=[];S.hist.forEach(function(h){var p=parseInt(h.p,10);if(isNaN(p)||h.r==null)return;var w=(S.wh||[]).filter(function(x){return x.d===h.d})[0];if(!w)return;
+      var good=(w.rec!=null&&w.rec>=60)||(w.sleepH&&w.sleepH>=7.5),bad=(w.rec!=null&&w.rec<45)||(w.sleepH&&w.sleepH<6.5);if(good&&!bad)g.push(h.r-p);else if(bad&&!good)b.push(h.r-p)});
+    if(g.length<3||b.length<3)return {ok:false,g:g.length,b:b.length};
+    return {ok:true,g:Math.round(avg(g)*10)/10,b:Math.round(avg(b)*10)/10,ng:g.length,nb:b.length};
+  }
+  /* goals: a target, how far along you are, and when you will get there at your current rate */
+  var GOALS=[{k:'bw',n:'Bodyweight',u:'kg'},{k:'squat',n:'Squat est. max',u:'kg'},{k:'bench',n:'Bench est. max',u:'kg'},{k:'dead',n:'Deadlift est. max',u:'kg'},{k:'press',n:'Press est. max',u:'kg'},{k:'pu',n:'Pull-ups',u:'reps'},{k:'z2',n:'Zone 2 watts per bpm',u:''}];
+  function goalSeries(k){
+    if(k==='bw')return (S.bw||[]).map(function(x){return {d:x.d,v:+x.w}});
+    if(k==='pu')return S.pu?[{d:today(),v:+S.pu}]:[];
+    if(k==='z2')return z2eff();
+    return S.hist.filter(function(h){return h.lift===k&&h.e}).map(function(h){return {d:h.d,v:h.e}});
+  }
+  function slopePerDay(pts){if(pts.length<3)return null;var t0=new Date(pts[0].d).getTime(),xs=pts.map(function(p){return (new Date(p.d).getTime()-t0)/864e5}),ys=pts.map(function(p){return p.v}),mx=avg(xs),my=avg(ys),num2=0,den=0;
+    xs.forEach(function(x,i){num2+=(x-mx)*(ys[i]-my);den+=(x-mx)*(x-mx)});return den?num2/den:null}
+  function goalStatus(k){
+    var g=(S.goals||{})[k];if(!g||!(+g.to))return null;var s=goalSeries(k),cur=s.length?s[s.length-1].v:null;if(cur==null)return {k:k,to:+g.to,cur:null};
+    var from=g.from!=null?+g.from:cur,to=+g.to,span=to-from,pct=span?Math.max(0,Math.min(100,Math.round((cur-from)/span*100))):100;
+    var rec=s.filter(function(x){return x.d>=addDays(today(),-42)}),sl=slopePerDay(rec),eta=null,dir=to>=cur?1:-1;
+    if(Math.abs(to-cur)<0.05)eta='reached';else if(sl&&sl*dir>0)eta=addDays(today(),Math.round((to-cur)/sl));
+    return {k:k,to:to,cur:Math.round(cur*100)/100,from:from,pct:pct,eta:eta,rate:sl?Math.round(sl*7*100)/100:null};
+  }
+  function goalsCard(){
+    S.goals=S.goals||{};
+    var h='<div class="note" style="margin:0">Set a target and the app tracks how far along you are and, from your last 6 weeks, when you will get there.</div>';
+    GOALS.forEach(function(G){var st=goalStatus(G.k),g=S.goals[G.k]||{};
+      h+='<div style="margin-top:12px"><div class="row" style="align-items:flex-end;gap:8px"><label class="f" style="flex:1">'+G.n+' target'+(G.u?' ('+G.u+')':'')+'<input type="number" inputmode="decimal" id="goal-'+G.k+'" value="'+esc(g.to||'')+'"></label><button class="btn s" type="button" data-act="goalset" data-k="'+G.k+'">Save</button></div>';
+      if(st&&st.cur!=null)h+='<div class="budget" style="margin-top:6px" aria-hidden="true"><i style="width:'+st.pct+'%"></i></div><div class="note" style="margin:4px 0 0">Now '+st.cur+(G.u?' '+G.u:'')+' · '+st.pct+'% of the way'+(st.rate!=null?' · '+(st.rate>0?'+':'')+st.rate+' a week':'')+' · '+(st.eta==='reached'?'reached':st.eta?'on track for '+new Date(st.eta+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}):'no projected date yet: not moving toward it')+'</div>';
+      h+='</div>'});
+    return h;
+  }
+  /* estimated heart rate per set, from WHOOP's session average, peak and zones, when no live heart rate was recorded */
+  function intens(s){if(s.b==='main')return s.i>=5?1:s.i>=3?.9:.55+.07*s.i;if(s.b==='cond')return .75;if(s.b==='sprint')return .95;var e=EX[s.b]||{};
+    if(e.mob||/^m_/.test(s.b))return .35;if(s.b==='sled')return .5;if(e.timer||e.eq==='time')return .45;if(/^(swing|carry|sprawl|throw|slam|farmer|inclsprawl)$/.test(s.b))return .85;return e.load?.75:.55}
+  function estHR(lg){
+    if(!lg||!lg.sets||!lg.sets.length||(lg.hrs&&lg.hrs.length)||!lg.wh||!lg.wh.avg||!lg.wh.max)return false;
+    var M=+lg.wh.max,A=+lg.wh.avg,T=0,IS=0;lg.sets.forEach(function(s){var d=Math.max(1,s.e-s.s);T+=d;IS+=intens(s)*d});var Ib=IS/T;
+    var Lw=(A-0.8*Ib*M)/(1-0.8*Ib);Lw=Math.max(60,Math.min(A-3,Lw));
+    lg.sets.forEach(function(s){var I=intens(s);s.max=Math.round(Lw+I*(M-Lw));s.avg=Math.round(Lw+0.8*I*(M-Lw));s.hre=1;delete s.rec});lg.hrEst=1;return true;
+  }
   function analyse(){var R=analyse0();try{A=R;R.findings=R.findings.concat(fbFindings())}catch(e){}return R}
   function analyse0(){return Rules.review({unit:S.unit,tm:S.tm,hist:S.hist,cycle:S.cycle,bw:S.bw,h:+S.h||0,pu:S.pu,pain:S.pain,sessions:sessions(),loadHist:S.loadHist,dismissed:S.dismiss,step:inc()})}
   function addonFor(id){return A&&A.addons[id]||null}
@@ -1011,8 +1108,12 @@ var INFO={
       }else if(b.hyp&&ad){/* moved to the optional extras on a day your review adds a lift, to keep within 45 minutes */}
       else out.push(b);
     });
+    var rh=rehabIds();
+    if(rh.length){var blk={t:'grp',label:d.lift?'Rehab · during main-lift rests':'Rehab',m:d.lift?0:3,ex:rh,rehab:true},wi=-1;
+      out.forEach(function(b,i){if(wi<0&&/Warm-up/.test(b.label||''))wi=i});if(wi>=0)out.splice(wi+1,0,blk);else out.push(blk)}
     return out;
   }
+  function D0lift(b){return /rests/.test(b.label||'')}
   function nSets(e,dayId){return Prog.sets(e,S.heavy)}
   /* ---------- muscle growth: weekly hard sets per area, counting indirect work as half ---------- */
   var AREAS=[{k:'chest',n:'Chest'},{k:'sh',n:'Shoulders'},{k:'bi',n:'Biceps'},{k:'tri',n:'Triceps'}];
@@ -1050,7 +1151,7 @@ var INFO={
   function extrasOf(d){var ad=addonFor(d.id),hy=[];
     if(ad)d.blocks.forEach(function(b){if(b.hyp)hy=hy.concat(b.ex)});
     return hy.concat((d.extras||[]).filter(function(x){return x!==ad}))}
-  function dayMin(d){return Prog.dayMin(d,S.cycle,S.week,S.heavy,addonFor(d.id))}
+  function dayMin(d){return Prog.dayMin(d,S.cycle,S.week,S.heavy,addonFor(d.id))+(!d.lift&&rehabIds().length?3:0)}
   /* ---------- background time tracking and finish estimate ---------- */
   function stamp(lg,b,i){lg.tk=lg.tk||[];lg.tk.push({b:b,i:i,t:Date.now()});if(lg.tk.length>300)lg.tk=lg.tk.slice(-300)}
   function blockUnits(d,b,lg){
@@ -1132,6 +1233,7 @@ var INFO={
       if(s.batch)o.batch=1;if(s.est)o.est=1;if(h){o.avg=h.avg;o.max=h.max;o.min=h.min;var rc=hrRecovery(lg,s);if(rc!=null)o.rec=rc}return o});
     if(lg.hrs&&lg.hrs.length){var all=lg.hrs.map(function(x){return x[1]});lg.hrSum={avg:Math.round(all.reduce(function(p,v){return p+v},0)/all.length),max:Math.max.apply(null,all),n:all.length}}
     // keep raw heart rate for the last 12 sessions only, to save space; the per-set results stay forever
+    estHR(lg);
     var withRaw=Object.keys(S.logs).filter(function(k){return S.logs[k].hrs&&S.logs[k].hrs.length}).sort(function(a,b){return (S.logs[a].t0||0)-(S.logs[b].t0||0)});
     withRaw.slice(0,-12).forEach(function(k){delete S.logs[k].hrs});
   }
@@ -1139,10 +1241,10 @@ var INFO={
   function zonesLine(lg){var z=lg.wh&&lg.wh.z;if(!z)return '';var nm=['Rest','Z1','Z2','Z3','Z4','Z5'];return '<div class="note" style="margin:8px 0 0">WHOOP time in heart-rate zones: '+z.map(function(m,i){return m>=0.5?nm[i]+' '+Math.round(m)+' min':''}).filter(Boolean).join(' · ')+'</div>'}
   function setsTable(lg){
     var ss=lg.sets||[];if(!ss.length)return zonesLine(lg);
-    var any=ss.some(function(s){return s.max}),h='<details style="margin-top:10px"><summary class="note" style="margin:0;cursor:pointer">Set by set ('+ss.length+' sets'+(any?', with heart rate':'')+')</summary><div style="overflow-x:auto"><table class="st"><tr><th>Set</th><th>Start</th><th>Finish</th><th>Time</th>'+(any?'<th>Avg</th><th>Peak</th><th>Drop</th>':'')+'</tr>';
+    var any=ss.some(function(s){return s.max}),h='<details style="margin-top:10px"'+(lg.hrEst?' open':'')+'><summary class="note" style="margin:0;cursor:pointer">Set by set ('+ss.length+' sets'+(any?(lg.hrEst?', with estimated heart rate':', with heart rate'):'')+')</summary><div style="overflow-x:auto"><table class="st"><tr><th>Set</th><th>Start</th><th>Finish</th><th>Time</th>'+(any?'<th>Avg</th><th>Peak</th><th>Drop</th>':'')+'</tr>';
     ss.forEach(function(s){h+='<tr><td>'+esc(s.n)+(s.w!==''&&s.w!=null?' '+esc(s.w)+'×'+esc(s.r):'')+(s.est?' *':s.batch?' †':'')+'</td><td>'+hhmmss(lg.t0+s.s*1000)+'</td><td>'+hhmmss(lg.t0+s.e*1000)+'</td><td>'+fmtSec(s.e-s.s)+'</td>'+
       (any?'<td>'+(s.avg||'–')+'</td><td>'+(s.max||'–')+'</td><td>'+(s.rec!=null?'−'+s.rec:'–')+'</td>':'')+'</tr>'});
-    h+='</table></div><div class="note">Each time covers the set and the rest before it. † ticked together with other sets, so the time is shared equally.'+(ss.some(function(s){return s.est})?' * no tick times were recorded, so the session is spread evenly across these sets.':'')+(any?' Drop is how far your heart rate fell in the minute after the set’s peak.':'')+'</div></details>';
+    h+='</table></div>'+(lg.hrEst?'<div class="note" style="color:var(--knee)">Heart rate here is estimated, not measured: WHOOP only shares a session average, peak and zone times, so these are spread across your sets by how hard each one is. Connect live heart rate for real per-set numbers.</div>':'')+'<div class="note">Each time covers the set and the rest before it. † ticked together with other sets, so the time is shared equally.'+(ss.some(function(s){return s.est})?' * no tick times were recorded, so the session is spread evenly across these sets.':'')+(any?' Drop is how far your heart rate fell in the minute after the set’s peak.':'')+'</div></details>';
     return zonesLine(lg)+h;
   }
   function hhmmss(ts){var x=new Date(ts),z=function(v){return ('0'+v).slice(-2)};return z(x.getHours())+':'+z(x.getMinutes())+':'+z(x.getSeconds())}
@@ -1178,7 +1280,7 @@ var INFO={
     // top sets of each main lift: weight against peak heart rate
     ['squat','bench','dead','press'].forEach(function(k){
       var D=DAYS.filter(function(x){return x.lift===k})[0],pts=[];
-      L.filter(function(x){return x.id===D.id}).forEach(function(x){var top=(x.l.sets||[]).filter(function(s){return s.b==='main'&&s.i>=3&&s.max});if(!top.length)return;
+      L.filter(function(x){return x.id===D.id}).forEach(function(x){var top=(x.l.sets||[]).filter(function(s){return s.b==='main'&&s.i>=3&&s.max&&!s.hre});if(!top.length)return;
         var t=top[top.length-1];pts.push({d:x.d,w:+t.w||0,r:+t.r||0,max:t.max,rec:avg(top.map(function(s){return s.rec}))})});
       if(pts.length<4)return;var a=pts.slice(-6,-3),b=pts.slice(-3),wa=avg(a.map(function(p){return p.w})),wb=avg(b.map(function(p){return p.w})),ha=avg(a.map(function(p){return p.max})),hb=avg(b.map(function(p){return p.max}));
       if(wb>=wa&&ha-hb>=5)out.push(Rules.NAMES[k]+': '+(wb>wa?'heavier':'the same')+' top sets at '+Math.round(ha-hb)+' bpm lower peak heart rate. Your work capacity is improving.');
@@ -1217,9 +1319,51 @@ var INFO={
   function recentFlags(id){return S.pain.slice(-12).filter(function(p){return p.id===id}).length}
   function swapKey(id){return id.indexOf('main-')===0?id:baseOf(id)}
   function altsFor(key){var l=(Prog.ALTS[key]||[]).slice();Object.keys(S.custom).forEach(function(c){if(S.custom[c].for===key&&l.indexOf(c)<0)l.unshift(c)});return l.filter(function(x){return EX[x]})}
+  /* ---------- rehab: pain you choose to address gets one drill per joint, and a weekly pain check ---------- */
+  function wkKey(){return S.cycle+'-'+S.week}
+  function activeIssues(){return (S.issues||[]).filter(function(x){return x.active})}
+  function issueFor(part){return activeIssues().filter(function(x){return x.part===part})[0]}
+  function issueDrill(is){if(!is.ladder)return null;var L=Prog.MOB[is.ladder];return L?L[Math.min(is.lvl||0,L.length-1)]:null}
+  function rehabIds(){var out=[];activeIssues().forEach(function(is){var id=issueDrill(is);if(id&&out.indexOf(id)<0)out.push(id)});return out}
+  function weekAvgs(is){
+    // average rating per training week, oldest first; the rating when you flagged it counts as the first
+    var g={},order=[];(is.ratings||[]).forEach(function(r){var w=r.base?is.wk:String(r.k||'').split('-').slice(0,2).join('-');if(!(w in g)){g[w]=[];order.push(w)}g[w].push(+r.v)});
+    return order.map(function(w){var a=g[w];return {w:w,v:Math.round(a.reduce(function(s,v){return s+v},0)/a.length*10)/10}});
+  }
+  function rehabProgress(is){
+    var wa=weekAvgs(is),n=wa.length;if(n<2||is.lvlWk===wkKey())return;
+    var L=is.ladder&&Prog.MOB[is.ladder]?Prog.MOB[is.ladder].length:1,cur=wa[n-1].v,prev=wa[n-2].v;
+    if(cur>=prev+2&&(is.lvl||0)>0){is.lvl--;is.lvlWk=wkKey();is.msg='Pain went up, so the drill went back a level.'}
+    else if(cur<=2&&prev<=2&&(is.lvl||0)<L-1){is.lvl=(is.lvl||0)+1;is.lvlWk=wkKey();is.msg='Two good weeks, so the drill moved up a level.'}
+    if(n>=3&&wa.slice(-3).every(function(x){return x.v===0}))is.suggest=true;
+  }
+  function trendWord(wa){if(wa.length<2)return 'New';var a=wa[wa.length-1].v,b=wa[Math.max(0,wa.length-3)].v;return a<=b-1?'Improving':a>=b+1?'Getting worse':'Steady'}
+  function rateRow(id,lg){
+    var wk=wkKey(),k=lkey(U.day),out='';
+    activeIssues().forEach(function(is){if(is.exs.indexOf(id)<0||is.wk===wk)return;
+      var mine=(is.ratings||[]).filter(function(r){return r.ex===id&&!r.base&&String(r.k||'').indexOf(wk+'-')===0}).pop();
+      out+='<div class="note" style="margin:8px 0 0;color:var(--ink)">Weekly check: rate your '+esc(is.part.toLowerCase())+' pain on this movement'+(mine?' · saved '+mine.v:'')+'</div><div class="pv" style="grid-template-columns:repeat(11,1fr)">';
+      for(var v=0;v<=10;v++)out+='<button type="button" style="min-height:40px;font-size:14px" data-act="irate" data-iss="'+is.id+'" data-ex="'+esc(id)+'" data-v="'+v+'" aria-pressed="'+(!!mine&&mine.v===v)+'">'+v+'</button>';
+      out+='</div>'});
+    return out;
+  }
+  function rehabCard(){
+    var all=S.issues||[],act=activeIssues(),h='';
+    if(!all.length)return '<div class="card"><div class="note" style="margin:0">Nothing being addressed. When you flag pain, tick <b>Address this pain</b> for a long-term issue: one rehab drill for that joint goes into every session, and each week you rate the pain on the movements that caused it.</div></div>';
+    act.forEach(function(is){var dr=issueDrill(is),wa=weekAvgs(is),L=is.ladder&&Prog.MOB[is.ladder]?Prog.MOB[is.ladder].length:0;
+      h+='<div class="card"'+(is.suggest?' style="border-color:var(--ok)"':'')+'><div class="row"><b>'+esc(is.part)+(is.side?' ('+esc(is.side.toLowerCase())+')':'')+'</b><span class="pill">'+trendWord(wa)+'</span></div>'+
+        '<div class="note">Since '+esc(is.start)+'. Linked to: '+esc(is.exNames.join(', '))+'.'+(is.trig?' Caused by: '+esc(is.trig)+'.':'')+'</div>'+
+        '<div class="note" style="color:var(--ink)">'+(dr?'Drill: <b>'+esc(EX[dr].n)+'</b>, level '+((is.lvl||0)+1)+' of '+L+'. Done during your main-lift rests.':'No extra drill: your warm-up already covers knees. Ratings are still tracked.')+'</div>'+
+        (is.msg?'<div class="note">'+esc(is.msg)+'</div>':'')+(wa.length>=2?line(wa.map(function(x){return x.v}),null,'/10','Weekly pain rating'):wa.length?'<div class="note">Rated '+wa[0].v+'/10 when flagged. Your first weekly check comes next week.</div>':'')+
+        (is.suggest?'<div class="note" style="color:var(--ok)">Three weeks at zero. Mark it resolved?</div>':'')+
+        '<div class="row" style="margin-top:10px;gap:8px"><button class="btn s" type="button" data-act="iresolve" data-id="'+is.id+'">Resolved</button><button class="btn s" type="button" data-act="istop" data-id="'+is.id+'">Stop addressing</button></div></div>'});
+    var old=all.filter(function(x){return !x.active});
+    if(old.length)h+='<div class="note">Past: '+old.slice(-6).map(function(x){return esc(x.part)+' ('+(x.resolved?'resolved '+esc(x.resolved):'stopped')+')'}).join(', ')+'.</div>';
+    return h||'<div class="card"><div class="note" style="margin:0">Nothing active.</div></div>';
+  }
   function flagBtn(id,name,lg,knee){
     var p=pOf(lg,id),on=!!p,key=id.indexOf('main-')===0?id:id;
-    var h='<button type="button" class="flag" role="checkbox" aria-checked="'+on+'" data-act="pflag" data-id="'+id+'" data-n="'+esc(name)+'"><span class="bx">'+(on?'✓':'')+'</span><span>'+(on?'Pain flagged: '+esc(p.part)+(p.side?' ('+esc(p.side.toLowerCase())+')':'')+' · '+p.v+'/10':'Flag pain')+'</span></button>';
+    var h=rateRow(id,lg)+'<button type="button" class="flag" role="checkbox" aria-checked="'+on+'" data-act="pflag" data-id="'+id+'" data-n="'+esc(name)+'"><span class="bx">'+(on?'✓':'')+'</span><span>'+(on?'Pain flagged: '+esc(p.part)+(p.side?' ('+esc(p.side.toLowerCase())+')':'')+' · '+p.v+'/10':'Flag pain')+'</span></button>';
     var swapK=swapKey(key.indexOf('main-')===0?key:id),hard=(on&&p.v>=4)||recentFlags(id)>=2;
     if(on&&p.v>=4)h+='<div class="note" style="color:var(--sig)">Above 3. Stop this exercise today and swap to a gentler option below. If it keeps happening, see a physio.</div>';
     else if(on&&p.v===3)h+='<div class="note" style="color:var(--knee)">Right at the limit. Hold the weight and range here, or swap it.</div>';
@@ -1235,6 +1379,9 @@ var INFO={
     h+='<div class="note">1–3: mild, you can keep going. 4 or more: stop the exercise.</div>';
     h+='<h2>Describe it (optional)</h2><textarea data-pf="note" placeholder="For example: sharp pain under the kneecap at the bottom of the rep" aria-label="Describe the pain">'+esc(f.note||'')+'</textarea>';
     h+='<label class="f" style="margin-top:10px">What movement causes it?<input type="text" data-pf="trig" value="'+esc(f.trig||'')+'" placeholder="For example: deep knee bend under load" style="font-size:15px;text-align:left"></label>';
+    var isx=f.part&&issueFor(f.part),addr=f.address!=null?f.address:!!(isx&&isx.exs.indexOf(f.id)>=0);
+    h+='<h2>Long-term or short-term?</h2><button type="button" class="flag" role="checkbox" aria-checked="'+addr+'" data-act="paddr" style="width:100%"><span class="bx">'+(addr?'✓':'')+'</span><span><b>Address this pain</b></span></button>'+
+      '<div class="note">'+(addr?(f.part==='Knee'?'Knees are already covered by your warm-up, so no extra drill. Next week you will be asked to rate this pain each time you do this movement.':isx&&issueDrill(isx)?'Your '+esc(f.part.toLowerCase())+' already has a rehab drill ('+esc(EX[issueDrill(isx)].n)+'). This movement is added to its weekly pain check, with no extra drill.':'Adds one mobility or rehab drill for your '+esc((f.part||'joint').toLowerCase())+' to every session, done during main-lift rests. From next week you rate this pain each time you do the movement, and the drill progresses as it improves.'):'Leave unticked for a short-term knock, like a jiu-jitsu tweak that will settle in a week. Your program does not change.')+'</div>';
     h+='<div class="note">Your description goes into the Sunday review, so Claude can suggest a swap that suits it. Sharp pain, swelling, or pain that keeps returning is a reason to see a physio.</div>';
     h+='<div class="stack" style="margin-top:14px"><button class="cta" type="button" data-act="psave"'+(f.part&&f.v?'':' disabled')+'>Save flag</button>'+(f.had?'<button class="btn w" type="button" data-act="pclear">Remove flag</button>':'')+'</div>'+(f.part&&f.v?'':'<div class="note">Pick where and how bad to save.</div>')+'</div></div>';
     return h;
@@ -1536,11 +1683,44 @@ var INFO={
     var st=Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2);try{localStorage.setItem('iron-mat-whoop-state',st)}catch(e){}
     location.href='https://api.prod.whoop.com/oauth/oauth2/auth?response_type=code&client_id='+WHOOP_ID+'&redirect_uri='+encodeURIComponent(WHOOP_REDIRECT)+'&scope='+encodeURIComponent('offline read:recovery read:cycles read:sleep read:workout read:profile read:body_measurement')+'&state='+st;
   }
+  /* ---------- bodyweight: your Withings scale reaches the app through WHOOP, or directly ---------- */
+  function addWeight(d,w,src,x){
+    // one entry per day; a scale reading beats a typed one, which beats WHOOP's copy
+    var P={withings:3,manual:2,whoop:1},e={d:d,w:Math.round(w*10)/10,src:src};if(x){if(x.fat)e.fat=x.fat;if(x.muscle)e.muscle=x.muscle}
+    S.bw=S.bw||[];for(var i=0;i<S.bw.length;i++)if(S.bw[i].d===d){if((P[src]||2)>=(P[S.bw[i].src]||2))S.bw[i]=e;return}
+    S.bw.push(e);S.bw.sort(function(a,b){return a.d<b.d?-1:a.d>b.d?1:0});
+  }
+  var WIKEY='iron-mat-withings',WI={busy:false,msg:''};
+  function wiCfg(){try{return JSON.parse(localStorage.getItem(WIKEY)||'{}')}catch(e){return {}}}
+  function setWi(o){try{localStorage.setItem(WIKEY,JSON.stringify(o))}catch(e){}}
+  function wiConnect(){var c=wiCfg();if(!c.id){WI.msg='Enter your Withings client ID first.';V();return}
+    var st='wi.'+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2);try{localStorage.setItem('iron-mat-withings-state',st)}catch(e){}
+    location.href='https://account.withings.com/oauth2_user/authorize2?response_type=code&client_id='+encodeURIComponent(c.id)+'&scope=user.metrics&redirect_uri='+encodeURIComponent(WHOOP_REDIRECT)+'&state='+st}
+  function wiCallback(code,st,err){
+    var exp='';try{exp=localStorage.getItem('iron-mat-withings-state')||''}catch(e){}
+    U.view=S.onboarded?'settings':U.view;
+    if(err){WI.msg='Withings connection was cancelled.';return}
+    if(st!==exp){WI.msg='That Withings login could not be verified. Tap Connect Withings again.';return}
+    WI.busy=true;WI.msg='Connecting to Withings…';
+    srv('/withings/token',{code:code,redirect_uri:WHOOP_REDIRECT}).then(function(j){var c=wiCfg();c.access=j.access_token;c.refresh=j.refresh_token;c.exp=Date.now()+(+j.expires_in||10800)*1000;setWi(c);WI.busy=false;WI.msg='Withings connected.';wiSync(true)},
+      function(e){WI.busy=false;WI.msg=srvErr(e,'Withings');V()});
+  }
+  function wiToken(){var c=wiCfg();if(c.access&&c.exp>Date.now()+60000)return Promise.resolve(c.access);if(!c.refresh)return Promise.reject({none:true});
+    return srv('/withings/refresh',{refresh_token:c.refresh}).then(function(j){var c2=wiCfg();c2.access=j.access_token;c2.refresh=j.refresh_token||c2.refresh;c2.exp=Date.now()+(+j.expires_in||10800)*1000;setWi(c2);return c2.access})}
+  function wiSync(force){
+    var c=wiCfg();if(!c.refresh||WI.busy)return;if(!force&&c.last&&Date.now()-c.last<30*60000)return;
+    WI.busy=true;var since=c.since||Math.floor((Date.now()-365*864e5)/1000);
+    wiToken().then(function(tok){return srv('/withings/weight',{access_token:tok,since:since})}).then(function(j){
+      (j.measures||[]).sort(function(a,b){return a.t-b.t}).forEach(function(m){addWeight(ymdOf(m.t),m.w,'withings',{fat:m.fatPct,muscle:m.muscleKg})});
+      var c2=wiCfg();c2.last=Date.now();c2.since=Math.floor(Date.now()/1000)-3*86400;setWi(c2);WI.msg='';save();
+    }).catch(function(e){WI.msg=e&&e.none?'':srvErr(e,'Withings')}).then(function(){WI.busy=false;V()});
+  }
   function whCallback(){
     var q=new URLSearchParams(location.search),code=q.get('code'),st=q.get('state'),err=q.get('error');
     if(!code&&!err)return;
     try{history.replaceState(null,'',location.pathname+location.hash)}catch(e){}
     var exp='';try{exp=localStorage.getItem('iron-mat-whoop-state')||''}catch(e){}
+    if(st&&st.indexOf('wi.')===0){wiCallback(code,st,err);return}
     U.view=S.onboarded?'settings':U.view;
     if(err){WH.msg='WHOOP connection was cancelled.';return}
     if(!st||st!==exp){WH.msg='That WHOOP login could not be verified. Tap Connect WHOOP again.';return}
@@ -1587,10 +1767,10 @@ var INFO={
       if(o.rec==null&&y.rec!=null){o.rec=y.rec;o.hrv=y.hrv;o.rhr=y.rhr;o.old=true}
       var body=r[3];
       if(body){if(body.height_meter&&!S.h)S.h=Math.round(body.height_meter*100);
-        if(body.weight_kilogram){var bw=Math.round(body.weight_kilogram*10)/10,last=S.bw[S.bw.length-1];if(!last||last.d!==today()&&Math.abs(last.w-bw)>=.2)S.bw.push({d:today(),w:bw,src:'whoop'})}
+        if(body.weight_kilogram){var bw=Math.round(body.weight_kilogram*10)/10;if(S.whBody!==bw){S.whBody=bw;addWeight(today(),bw,'whoop')}}
         if(body.max_heart_rate)o.maxhr=body.max_heart_rate}
       S.whoop=o;WH.msg='';save();
-    },function(e){WH.msg=e&&e.none?'':srvErr(e,'WHOOP')}).then(function(){WH.busy=false;V();whMatch()});
+    },function(e){WH.msg=e&&e.none?'':srvErr(e,'WHOOP')}).then(function(){WH.busy=false;V();whMatch();wiSync(false)});
   }
   function zones(sc){var z=sc&&sc.zone_durations||sc&&sc.zone_duration;if(!z)return null;return ['zone_zero_milli','zone_one_milli','zone_two_milli','zone_three_milli','zone_four_milli','zone_five_milli'].map(function(k){return Math.round((+z[k]||0)/6000)/10})}
   function whMatch(){
@@ -1600,7 +1780,7 @@ var INFO={
       var a=new Date(l.t0-30*60000).toISOString(),b=new Date((l.tl||l.t0)+60*60000).toISOString();
       whGet('/v2/activity/workout?start='+encodeURIComponent(a)+'&end='+encodeURIComponent(b)+'&limit=5').then(function(j){
         var best=null;(j&&j.records||[]).forEach(function(w){var s=new Date(w.start).getTime(),e=new Date(w.end).getTime(),ov=Math.min(e,l.tl||l.t0)-Math.max(s,l.t0);if(ov>0&&(!best||ov>best.ov))best={ov:ov,w:w}});
-        if(best&&best.w.score){var sc=best.w.score;l.wh={strain:Math.round(sc.strain*10)/10,avg:sc.average_heart_rate,max:sc.max_heart_rate,kj:Math.round(sc.kilojoule||0),start:best.w.start,end:best.w.end,z:zones(sc)};save();V()}
+        if(best&&best.w.score){var sc=best.w.score;l.wh={strain:Math.round(sc.strain*10)/10,avg:sc.average_heart_rate,max:sc.max_heart_rate,kj:Math.round(sc.kilojoule||0),start:best.w.start,end:best.w.end,z:zones(sc)};if(l.sets&&!l.hrs)estHR(l);save();V()}
       }).catch(function(){})});
   }
   function recCol(v){return v>=67?'var(--ok)':v>=34?'var(--knee)':'var(--sig)'}
@@ -1669,7 +1849,7 @@ var INFO={
     $('revdot').hidden=!(A&&(S.reviewDue||A.findings.some(function(f){return f.sev==='high'&&!f.dismissed})));
     $('repdot').hidden=!(S.reports||[]).some(function(r){return !r.seen});
     h=v==='onboard'?vOnboard():v==='today'?vToday():v==='session'?vSession():v==='review'?vReview():v==='reports'?vReports():v==='progress'?vProgress():v==='settings'?vSettings():vNext();
-    if(U.pf)h+=painModal();else if(U.info)h+=infoModal();else if(U.sw)h+=swapModal();else if(U.xw)h+=xModal();else if(U.cal)h+=dayModal();
+    if(U.rpick)h+=pickModal();else if(U.pf)h+=painModal();else if(U.info)h+=infoModal();else if(U.sw)h+=swapModal();else if(U.xw)h+=xModal();else if(U.cal)h+=dayModal();
     if(Safe.warn)h='<div class="card" role="alert" style="border-color:var(--warn,#e0a030)"><b>Your data is safe</b><div class="note" style="margin:4px 0 0">'+esc(Safe.warn)+'</div></div>'+h;
     var y=window.scrollY;$('view').innerHTML=h;
     var ct=$('cltext');if(ct){var t=U.cl&&U.cl.text!=null?U.cl.text:(S.claude?S.claude.text:'');ct.textContent=t}
@@ -1722,7 +1902,7 @@ var INFO={
     var ph=Prog.phase(S.cycle);
     var h='<div class="top"><div><h1>Cycle '+S.cycle+'</h1><p class="sub">'+WN[S.week]+'</p></div><span class="pill">kg · '+inc()+' kg steps</span></div>';
     h+='<div class="pips" aria-label="Week '+(S.week+1)+' of 4">';for(var i=0;i<4;i++)h+='<i class="'+(i<S.week?'d':i===S.week?'n':'')+'"></i>';h+='</div>';
-    h+=whoopCard();
+    h+=whoopCard()+readyCard();
     var tip=S.cycle===1?'<b>Calibration month.</b> After each main lift, your training max moves toward what your sets show: up by at most 10%, or down if you miss reps. Stop last sets 1–2 reps before failure.':ph==='build'?'<b>Build.</b> Add load to split squats, floor presses and hip thrusts. Sprints go to 7 rounds.':'<b>Push.</b> Push the intensity on the main lifts. Sprints go to 8 rounds.';
     h+='<div class="banner">'+tip+(S.week===3?' This is the deload week: no extra reps on the last set.':'')+'</div>';
     if(S.cycle>1)Object.keys(A.ahead).forEach(function(k){var a=A.ahead[k];
@@ -1764,7 +1944,7 @@ var INFO={
     blocksOf(d).forEach(function(b){
       if(b.t==='main'){h+=mainBlock(d,b,lg)}
       else if(b.t==='grp'){
-        h+='<div class="blk"><div class="hd"><span>'+b.label+(b.ss?' · alternate A1 / A2':'')+'</span><span>≈ '+b.m+' min</span></div>'+(b.addon&&b.why?'<div class="note" style="margin:-4px 0 8px">Reason: '+esc(b.why)+'.</div>':'');
+        h+='<div class="blk"><div class="hd"><span>'+b.label+(b.ss?' · alternate A1 / A2':'')+'</span><span>≈ '+b.m+' min</span></div>'+(b.addon&&b.why?'<div class="note" style="margin:-4px 0 8px">Reason: '+esc(b.why)+'.</div>':'')+(b.rehab?'<div class="note" style="margin:-4px 0 8px">For: '+esc(activeIssues().filter(function(is){return issueDrill(is)}).map(function(is){return is.part.toLowerCase()+' ('+EX[issueDrill(is)].n+')'}).join(', '))+'. '+(D0lift(b)?'Do these between your main-lift sets, so they add no time.':'Two easy sets each.')+'</div>':'');
         if(b.mainKey&&U.msg)h+='<div class="toast" role="status">'+U.msg+'</div>';
         b.ex.forEach(function(id){h+=exCard(id,lg,b.addon,b.mainKey)});h+='</div>';
       }else if(b.t==='cond'){
@@ -1881,30 +2061,85 @@ var INFO={
     if(S.remote&&!S.reports.some(function(x){return x.kind==='weekly'})){addReport(normReport({date:S.remote.date,text:S.remote.text,changes:S.remote.notes,tm:S.remote.tm,subs:S.remote.subs},'weekly'));ch=true}
     if(S.claude&&S.claude.text&&!S.reports.some(function(x){return x.kind==='instant'})){var rp=normReport({text:S.claude.text,date:ymdOf(S.claude.t||Date.now())},'instant');rp.t=S.claude.t||rp.t;S.reports.push(rp);ch=true}
     if(ch){save();V()}}
-  function reportPrompt(){
+  function periodRange(per){var t=today();return per==='today'?{from:t,to:t,label:'Today ('+t+')'}:per==='month'?{from:t.slice(0,8)+'01',to:t,label:'This month ('+t.slice(0,8)+'01 to '+t+')'}:{from:mondayOf(t),to:t,label:'This week (Monday '+mondayOf(t)+' to '+t+')'}}
+  function strip(h){return String(h||'').replace(/<[^>]+>/g,'')}
+  function periodData(from,to){
+    var L=[],inR=function(d){return d&&d>=from&&d<=to};
+    var W=(S.wh||[]).filter(function(x){return inR(x.d)});
+    L.push('WHOOP days in this period: '+(W.map(function(x){return x.d+': recovery '+(x.rec!=null?x.rec+'%':'?')+', HRV '+(x.hrv||'?')+' ms, resting HR '+(x.rhr||'?')+', sleep '+(x.sleep!=null?x.sleep+'%':'?')+(x.sleepH?' ('+x.sleepH+' h, bed '+(x.bed||'?')+', wake '+(x.wake||'?')+')':'')+', day strain '+(x.strain!=null?x.strain:'?')}).join('; ')||'none')+'.');
+    var gs=doneLogs().filter(function(x){return inR(logDate(x.l))}).sort(function(a,b){return a.l.t0-b.l.t0});
+    L.push('Gym sessions in this period: '+(gs.map(function(x){var l=x.l,D=dayById(x.id),fb=l.fb||{},ss=l.sets||[],top=ss.filter(function(s){return s.b==='main'&&s.i>=3}).pop();
+      return logDate(l)+' '+(D?D.title:x.id)+' '+hhmmss(l.t0)+'-'+hhmmss(endOf(l))+' ('+(l.mins||'?')+' min): '+logSummaryLines(x.k,l).map(strip).join('; ')+
+        (fb.feel?' | felt '+FEEL[fb.feel-1].toLowerCase()+(fb.energy?', energy '+ENERGY[fb.energy-1].toLowerCase():'')+(fb.body?', body '+BODY[fb.body-1].toLowerCase():''):'')+
+        (l.note?' | note: '+l.note:'')+(l.wh?' | WHOOP strain '+l.wh.strain+', avg HR '+l.wh.avg+', max '+l.wh.max+(l.wh.z?', zone minutes '+l.wh.z.join('/'):''):'')+
+        (ss.length?' | '+ss.length+' sets, avg '+fmtSec(avg(ss.map(function(s){return s.e-s.s})))+' per set'+(ss.some(function(s){return s.est})?' (spread evenly, no tick times)':''):'')+
+        (top&&top.max?' | top set peak HR '+top.max+(top.hre?' (estimated from WHOOP summary)':'')+(top.rec!=null?', drop '+top.rec+' in 60 s':''):'')+
+        (Object.keys(l.pain||{}).length?' | pain flagged: '+Object.keys(l.pain).map(function(k){var q=pOf(l,k);return k+' '+q.part+' '+q.v+'/10'}).join(', '):'')}).join(' || ')||'none')+'.');
+    var ow=(S.whw||[]).filter(function(w){return inR(w.d)&&!matchedWh(w)});
+    L.push('Other WHOOP activities in this period (jiu-jitsu and so on): '+(ow.map(function(w){return w.d+' '+w.sport+' '+w.min+' min, strain '+w.strain+(w.avg?', avg HR '+w.avg+', max '+w.max:'')}).join('; ')||'none')+'.');
+    var xs=(S.extra||[]).filter(function(e){return inR(e.d)});if(xs.length)L.push('Extra workouts logged: '+xs.map(function(e){return e.d+' '+e.type+(e.min?' '+e.min+' min':'')+(e.dist?' '+e.dist+' km':'')+(e.rpe?' effort '+e.rpe+'/10':'')+(e.note?' ('+e.note+')':'')}).join('; ')+'.');
+    var cds=Object.keys(S.cardio).map(function(k){return S.cardio[k]}).filter(function(c){return inR(c.d)});if(cds.length)L.push('Cardio machine data: '+cds.map(function(c){return c.d+' '+c.mode+(c.machine?' '+c.machine:'')+(c.min?' '+c.min+' min':'')+(c.w?' '+c.w+' W':'')+(c.hr?' avg HR '+c.hr:'')}).join('; ')+'.');
+    var pn=S.pain.filter(function(x){return inR(x.d)});L.push('Pain flags in this period: '+(pn.map(function(x){return x.d+' '+x.part+(x.side?' '+x.side:'')+' '+x.v+'/10 on '+x.ex+(x.addr?' (addressing)':' (short-term)')+(x.trig?', caused by '+x.trig:'')+(x.note?': '+x.note:'')}).join('; ')||'none')+'.');
+    var iss=(S.issues||[]).filter(function(is){return is.active||inR(is.resolved)});if(iss.length)L.push('Issues being addressed: '+iss.map(function(is){var wa=weekAvgs(is),dr=issueDrill(is);return is.part+(is.side?' '+is.side:'')+' since '+is.start+' (linked: '+is.exNames.join(', ')+'), drill '+(dr?EX[dr].n+' level '+((is.lvl||0)+1):'none (knee: warm-up covers it)')+', weekly pain '+wa.map(function(x){return x.v}).join(' > ')+' ('+trendWord(wa)+')'+(is.active?'':', resolved '+is.resolved)}).join('; ')+'.');
+    var bws=(S.bw||[]).filter(function(x){return inR(x.d)});L.push('Bodyweight in this period: '+(bws.map(function(x){return x.d+' '+x.w+' kg'+(x.fat?' ('+x.fat+'% fat)':'')+(x.src?' via '+x.src:'')}).join('; ')||'no new weigh-in; latest '+bwNow()+' kg')+'.');
+    return L;
+  }
+  function snapshot5(per){
+    // the numbers frozen into a report, so its charts always show what it was written from
+    var r=readiness(),lr=loadRatio(),g=GOALS.map(function(G){var s=goalStatus(G.k);return s&&s.cur!=null?{n:G.n,u:G.u,cur:s.cur,to:s.to,pct:s.pct,eta:s.eta}:null}).filter(Boolean);
+    return {per:per||'week',ready:r?{score:r.score,label:r.label}:null,sc:scorecards(),load:lr,bw:(S.bw||[]).slice(-16).map(function(x){return +x.w}),eff:z2eff().slice(-12).map(function(x){return x.v}),
+      rec:(S.wh||[]).filter(function(x){return x.rec!=null}).slice(-14).map(function(x){return +x.rec}),pain:painTimeline(),goals:g,sp:sleepPerf()};
+  }
+  function cardHtml(c){
+    if(!c)return '';var h='<div class="rsec"><h4>Snapshot</h4>';
+    if(c.ready)h+='<div class="note" style="margin:0 0 6px;color:var(--ink)">Readiness <b>'+c.ready.score+'</b> · '+esc(c.ready.label)+(c.load?' · 7-day strain '+c.load.ratio+'× usual':'')+'</div>';
+    if(c.sc&&c.sc.length)h+=scoreTable(c.sc);
+    if(c.goals&&c.goals.length)h+='<div class="note">'+c.goals.map(function(g){return esc(g.n)+': '+g.cur+' of '+g.to+(g.u?' '+g.u:'')+' ('+g.pct+'%'+(g.eta&&g.eta!=='reached'?', on track for '+g.eta:'')+')'}).join(' · ')+'</div>';
+    if(c.bw&&c.bw.length>=2)h+=line(c.bw,null,'kg','Bodyweight');
+    if(c.rec&&c.rec.length>=2)h+=line(c.rec,null,'%','WHOOP recovery, last 14 days');
+    if(c.eff&&c.eff.length>=2)h+=line(c.eff,null,'W/bpm','Zone 2 efficiency');
+    if(c.pain&&c.pain.length)h+='<div class="note">Pain: '+c.pain.map(function(x){return esc(x.part)+' '+x.trend.toLowerCase()}).join(' · ')+'</div>';
+    return h+'</div>';
+  }
+  function reportPrompt(per){
     var base=claudePrompt().split('\n').filter(function(l){return !/^You are a strength coach|^Tasks:/.test(l)});
     var cd=Object.keys(S.cardio).map(function(k){var c=S.cardio[k];return c.d+' '+c.mode+(c.machine?' '+c.machine:'')+(c.min?' '+c.min+'min':'')+(c.dist?' '+c.dist+'km':'')+(c.w?' avg '+c.w+'W':'')+(c.lvl?' level '+c.lvl:'')+(c.speed?' '+c.speed+'km/h':'')+(c.incline?' incline '+c.incline+'%':'')+(c.hr?' avgHR '+c.hr:'')+(c.mhr?' maxHR '+c.mhr:'')}).slice(-12);
-    var mx=S.whoop&&S.whoop.maxhr||190;
+    var mx=S.whoop&&S.whoop.maxhr||190,pr=periodRange(per),prev=(S.reports||[]).slice().sort(function(a,b){return b.t-a.t})[0];
+    var r5=readiness(),sc=scorecards(),lr=loadRatio(),sp=sleepPerf(),pt=painTimeline(),gl=GOALS.map(function(G){var s=goalStatus(G.k);return s&&s.cur!=null?G.n+' '+s.cur+' toward '+s.to+(G.u?' '+G.u:'')+' ('+s.pct+'%'+(s.rate!=null?', '+s.rate+' a week':'')+(s.eta?', projected '+s.eta:', not moving toward it')+')':null}).filter(Boolean);
+    var secs=per==='today'?'"Summary", "Sleep and recovery", "Readiness", "Today\'s training", "Body and weight", "Next 24 hours"':'"Summary", "Readiness", "Follow-up", "Strength", "Muscle growth", "Balance and weak points", "Conditioning", "Recovery and load", "Joints and pain", "Goals", "Next week"';
+    var extra=['REPORT PERIOD: '+pr.label+'. Report on what happened in this period only; use earlier data purely for comparison. '+(per==='today'?'Focus on last night\'s sleep, today\'s recovery and any exercise today. If there was no training today, say so and cover readiness for the next session.':''),
+      'Data for this period:'].concat(periodData(pr.from,pr.to)).concat([
+      'Readiness today: '+(r5?r5.score+'/100 ('+r5.label+'; '+r5.parts.map(function(x){return x.n+' '+Math.round(x.v)}).join(', ')+')':'no WHOOP recovery yet')+'.',
+      'Scorecard (now / change vs 1 week / vs 4 weeks): '+sc.map(function(r){return r.n+' '+r.v[0]+(r.v[1]!=null?' / '+(Math.round((r.v[0]-r.v[1])*100)/100):' / -')+(r.v[2]!=null?' / '+(Math.round((r.v[0]-r.v[2])*100)/100):' / -')}).join('; ')+'.',
+      'Load: '+(lr?'7-day strain '+lr.acute+' vs usual week '+lr.chronic+' (ratio '+lr.ratio+')':'not enough WHOOP strain data')+'. Sleep vs performance: '+(sp.ok?'last-set rep surplus '+sp.g+' on good days vs '+sp.b+' on poor days':'not enough data yet')+'.',
+      'Pain by body part, weekly averages over 6 weeks: '+(pt.map(function(x){return x.part+' '+x.weeks.map(function(v){return v==null?'-':v}).join(',')+' ('+x.trend+')'}).join('; ')||'none')+'.',
+      'Goals: '+(gl.join('; ')||'none set')+'. The athlete wants to bring bodyweight down toward 100 kg while getting stronger and growing arms, chest and shoulders.',
+      prev?'Previous report ('+prev.date+', "'+prev.title+'"): suggested changes: '+(prev.changes.join(' | ')||'none')+'. Applied in the app: '+(Object.keys(prev.applied||{}).join(', ')||'none')+'. In "Follow-up", say whether each was followed and whether the data shows it worked.':'There is no previous report; in "Follow-up", say so briefly.']);
     return ['You are an experienced strength and conditioning coach writing an in-depth training report for one athlete. Be specific to the numbers given, direct, and practical.']
-      .concat(base).concat([
+      .concat(base).concat(extra).concat([
       'Cardio detail (most recent last): '+(cd.join('; ')||'none')+'. Max heart rate: '+mx+' bpm. Zone 2 target 130-145 bpm. Intervals target 85-95% of max heart rate in the hard minutes.',
-      'Write the report as JSON only, with no text before or after it, in this shape:',
+      'Write the report as JSON only, with no text before or after it, in this shape. Use these section headings, in this order: '+secs+'. Leave out a section only if there is truly nothing to say.',
       '{"title": "short headline", "sections": [{"h": "Summary", "t": "..."}, {"h": "Strength", "t": "..."}, {"h": "Balance and weak points", "t": "..."}, {"h": "Conditioning", "t": "..."}, {"h": "Recovery and load", "t": "..."}, {"h": "Joints and pain", "t": "..."}, {"h": "Next week", "t": "..."}], "changes": ["up to 6 concrete changes that fit inside 45-minute sessions"], "tm": {"squat": number}, "subs": {"<exercise id>": {"n": "name", "sets": 3, "reps": "8-12", "cue": "how to do it", "why": "why it avoids the pain"}}, "targets": {"zone2": {"w": number, "lvl": number, "speed": number, "incline": number, "hrLo": 130, "hrHi": 145, "note": "what to change next time"}, "int": {...}, "sprint": {...}}}',
       'Rules: plain text inside strings (no markdown, no asterisks). Each section 60-160 words. Use "tm" only for lifts whose training max should change now, rounded to '+inc()+' kg and within 15% of the current value. Use "subs" only for exercises with a pain note. In "targets", give next-session targets for each cardio type with data: if average heart rate was below the target band, raise resistance, watts, speed or incline by about 5%; if it was inside the band, raise by about 2-3%; if above, hold or lower by about 5%. Only include fields that suit the machine used (watts or level for bikes and rowers, speed and incline for treadmills). Do not diagnose injuries; recommend a physio for repeated pain of 4 or more.'
     ]).join('\n');
   }
   function parseJSON(t){var m=String(t||'').match(/\{[\s\S]*\}/);if(!m)return null;try{return JSON.parse(m[0])}catch(e){return null}}
-  function runReport(){
-    if(U.rbusy)return;U.rbusy=true;U.rerr='';V();
-    var p=reportPrompt(),done=function(text){var j=parseJSON(text),rp=normReport(j||{text:text},'instant');if(!j)rp.title='Training report';addReport(rp);U.ropen=rp.id;rp.seen=true;U.rbusy=false;save();V()},
+  function runReport(per){
+    if(U.rbusy)return;U.rbusy=true;U.rerr='';U.rpick=false;V();
+    var pr=periodRange(per),card=snapshot5(per),p=reportPrompt(per),done=function(text){var j=parseJSON(text),rp=normReport(j||{text:text},'instant');if(!j)rp.title='Training report';rp.per=per;rp.range=pr.label;rp.card=card;addReport(rp);U.ropen=rp.id;rp.seen=true;U.rbusy=false;save();V()},
       fail=function(msg){U.rbusy=false;U.rerr=msg;V()};
     if(inClaude()){window.claude.use('sample').then(function(sample){if(!sample)throw {code:'not_granted'};return sample(p,{modelTier:'complex',cache:false})}).then(function(r){done(r.text)},function(e){fail(e&&e.code==='rate_limited'?'Claude is busy. Try again in a few minutes.':'The report did not finish. Try again.')});return}
-    srv('/review',{prompt:p,max_tokens:3500}).then(function(j){done(j.text)},function(e){fail(e&&e.status===501?'Reports need the Anthropic key on your server.':srvErr(e,'Claude'))});
+    srv('/review',{prompt:p,max_tokens:per==='today'?2200:4000}).then(function(j){done(j.text)},function(e){fail(e&&e.status===501?'Reports need the Anthropic key on your server.':srvErr(e,'Claude'))});
   }
   function applyR(r,type,k){
     if(type==='tm'){var v=Core.rnd(+r.tm[k],inc(),'near'),cur=+S.tm[k];if(v>0&&cur&&Math.abs(v-cur)/cur<=0.15){S.tm[k]=v;r.applied['tm-'+k]=true}}
     else if(type==='sub'){var s=r.subs[k];if(s){var cid='c_'+k.replace(/[^a-z0-9]/gi,'');S.custom[cid]={n:s.n,sets:s.sets,reps:s.reps,rest:60,load:true,eq:'other',cue:s.cue,why:s.why,sub:true,custom:true,for:k,main:k.indexOf('main-')===0?'own':undefined};EX[cid]=S.custom[cid];S.subs[k]=cid;r.applied['sub-'+k]=true}}
     else if(type==='tgt'){Object.keys(r.targets).forEach(function(m){S.ctarget[m]=Object.assign({t:Date.now(),from:r.date},r.targets[m])});r.applied.tgt=true}
+  }
+  function pickModal(){
+    var t=today(),opts=[['today','Today','Last night\'s sleep, today\'s recovery and any training today.'],['week','This week','Monday '+mondayOf(t).slice(5)+' to today.'],['month','This month','1 '+new Date(t+'T12:00:00').toLocaleDateString('en-AU',{month:'long'})+' to today.']];
+    return '<div class="modal" data-act="rpbg"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rpt"><div class="row"><b id="rpt" style="font:700 24px var(--display);text-transform:uppercase">Report on</b><button type="button" class="btn s" data-act="rpclose">Close</button></div><div class="stack" style="margin-top:12px">'+
+      opts.map(function(o){return '<button class="btn w" type="button" data-act="rper" data-v="'+o[0]+'" style="text-align:left;padding:12px 14px"><b>'+o[1]+'</b><br><span class="note" style="margin:0">'+o[2]+'</span></button>'}).join('')+'</div></div></div>';
   }
   function vReports(){
     var rs=(S.reports||[]).slice().sort(function(a,b){return b.t-a.t}),can=inClaude()||!!apiCfg().code;
@@ -1915,6 +2150,8 @@ var INFO={
     rs.forEach(function(r){var open=U.ropen===r.id,first=(r.sections[0]&&r.sections[0].t||r.text||'').slice(0,140);
       h+='<div class="card rep"'+(r.seen?'':' style="border-color:var(--sig)"')+'><button type="button" class="rh" data-act="ropen" data-id="'+r.id+'" style="border:0;background:none;padding:0;width:100%;text-align:left;color:inherit" aria-expanded="'+open+'"><span><span class="note" style="margin:0">'+new Date(r.t).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'})+'</span><h3>'+esc(r.title)+'</h3></span><span class="kind'+(r.kind==='weekly'?' weekly':'')+'">'+(r.kind==='weekly'?'Weekly':'On demand')+'</span></button>';
       if(!open){h+='<div class="note">'+esc(first)+(first.length>=140?'…':'')+'</div></div>';return}
+      if(r.range)h+='<div class="note" style="margin:6px 0 0">'+esc(r.range)+'</div>';
+      h+=cardHtml(r.card);
       if(r.sections.length)r.sections.forEach(function(s){h+='<div class="rsec"><h4>'+esc(s.h)+'</h4><p>'+esc(s.t)+'</p></div>'});
       else if(r.text)h+='<div class="rsec"><p>'+esc(r.text)+'</p></div>';
       if(r.changes.length)h+='<div class="rsec"><h4>Changes to make</h4><ul class="dl">'+r.changes.map(function(c){return '<li>'+esc(c)+'</li>'}).join('')+'</ul></div>';
@@ -1939,6 +2176,7 @@ var INFO={
       '<label class="f">Pull-ups<input type="number" inputmode="numeric" data-pu="1" value="'+esc(S.pu)+'" placeholder="best"></label></div>'+
       '<div style="margin-top:10px"><button class="btn w" type="button" data-act="bwlog">Log today’s bodyweight</button></div><div class="note">'+trend+(whCfg().refresh?' · Bodyweight also syncs from WHOOP.':'')+'</div>'+
       (S.bw.length>=2?line(S.bw.slice(-20).map(function(x){return +x.w}),null,'kg','Bodyweight over time'):'')+'</div>';
+    h+='<h2>Rehab</h2><div class="stack">'+rehabCard()+'</div>';
     h+='<h2>Muscle growth</h2><div class="card">'+growthCard()+'</div><h2>Measurements</h2><div class="card">'+measCard()+'</div>';
     if(S.wh&&S.wh.filter(function(x){return x.rec!=null}).length>=2){var rs=S.wh.filter(function(x){return x.rec!=null}).slice(-21);
       h+='<h2>WHOOP recovery</h2><div class="card">'+line(rs.map(function(x){return x.rec}),rs.map(function(x){return x.rec<34}),'%','Recovery over time')+'<div class="note">Red dots are low-recovery days.</div></div>'}
@@ -2001,6 +2239,7 @@ var INFO={
       if(rs.length)lines.push('Set timing and heart rate per session (time per set includes the rest before it; sets ticked together share time equally): '+rs.map(function(x){var ss=x.l.sets,top=ss.filter(function(s){return s.b==='main'&&s.i>=3}),t=top[top.length-1];
         return logDate(x.l)+' '+x.id+': '+ss.length+' sets, avg '+fmtSec(avg(ss.map(function(s){return s.e-s.s})))+' per set'+(ss.some(function(s){return s.est})?' (estimated)':'')+(t?', top set '+t.w+'x'+t.r+(t.max?' peak HR '+t.max+(t.rec!=null?' drop '+t.rec+' in 60s':''):''):'')+(x.l.hrSum?', session HR avg '+x.l.hrSum.avg+' max '+x.l.hrSum.max:'')+(x.l.wh&&x.l.wh.z?', WHOOP zones min '+x.l.wh.z.join('/'):'')}).join('; ')+'.');
       var hi=hrInsights();if(hi.length)lines.push('Notable heart-rate and effort changes: '+hi.join(' ')+' Report on these where they matter.');})();
+    if((S.issues||[]).length)lines.push('Pain being addressed (one rehab drill per joint, rated weekly on the linked movements): '+(S.issues||[]).filter(function(is){return is.active}).map(function(is){var wa=weekAvgs(is),dr=issueDrill(is);return is.part+' since '+is.start+', drill '+(dr?EX[dr].n+' level '+((is.lvl||0)+1):'none')+', weekly pain '+wa.map(function(x){return x.v}).join(' > ')}).join('; ')+'.');
     lines.push('The app\'s own rule-based flags: '+(A.findings.map(function(f){return f.title}).join('; ')||'none')+'.');
     lines.push('Tasks: 1) Name the two or three most important inefficiencies or imbalances, using height, bodyweight and recovery as context where they matter. 2) For each, give one specific fix that fits inside 45 minutes: say what to swap or trim, not only what to add. 3) Say whether any training max should change now, and why. 4) For any pain note, suggest one alternative exercise that avoids the described painful movement but trains the same area. 5) One recovery or load-management note given the mat training. Do not diagnose injuries; if any pain flag is 4 or higher, tell them to see a physio if it repeats. Be direct and specific to these numbers.');
     return lines.join('\n');
@@ -2023,7 +2262,13 @@ var INFO={
   function vProgress(){
     var k=U.pTab,pts=S.hist.filter(function(x){return x.lift===k});
     var hi=hrInsights();
-    var h='<h1>Progress</h1><h2>Calendar</h2>'+calCard()+'<h2>Heart rate and effort</h2><div class="card">'+(hi.length?hi.map(function(t){return '<div class="note" style="margin:0 0 8px;color:var(--ink)">• '+esc(t)+'</div>'}).join(''):'<div class="note" style="margin:0">Nothing notable yet. After a few weeks this shows changes in peak heart rate on your top sets, recovery between sets, time per set, WHOOP strain per minute, resting heart rate and HRV, but only when something has moved.</div>')+'</div>'+'<h2>Strength</h2><p class="note" style="margin:0 0 8px">Estimated max from your best set each session. Orange dots are new records.</p><div class="chips">';
+    var sc=scorecards(),pt=painTimeline(),lr=loadRatio(),ef=z2eff(),sp=sleepPerf();
+    var ins='<h2>Goals</h2><div class="card">'+goalsCard()+'</div>'+(sc.length?'<h2>Scorecard</h2><div class="card">'+scoreTable(sc)+'</div>':'')+
+      '<h2>Load and recovery</h2><div class="card"><div class="note" style="margin:0">'+(lr?'Last 7 days of WHOOP strain: '+lr.acute+', against your usual week of '+lr.chronic+' ('+lr.ratio+'×). '+(lr.ratio>1.5?'A big jump: injury risk rises, so ease off.':lr.ratio>1.25?'Higher than usual; watch recovery.':lr.ratio<0.8?'A light week.':'In your normal range.'):'Needs about 10 days of WHOOP strain.')+'</div>'+
+      (sp.ok?'<div class="note">On good sleep or recovery days you beat the last-set target by '+sp.g+' reps on average; on poor days by '+sp.b+' ('+sp.ng+' and '+sp.nb+' sessions).</div>':'<div class="note">Sleep against performance: needs 3 sessions on good and 3 on poor recovery days (so far '+sp.g+' and '+sp.b+').</div>')+
+      (ef.length>=2?line(ef.slice(-12).map(function(x){return x.v}),null,'W/bpm','Zone 2 watts per heartbeat'):'<div class="note">Cardio efficiency (zone 2 watts per bpm) appears after two zone 2 sessions with watts and heart rate.</div>')+'</div>'+
+      (pt.length?'<h2>Pain by body part</h2><div class="card">'+pt.map(function(x){return '<div class="row" style="margin-top:6px"><span>'+esc(x.part)+'</span><span class="note" style="margin:0">'+x.weeks.map(function(v){return v==null?'·':v}).join(' ')+' · <b>'+x.trend+'</b></span></div>'}).join('')+'<div class="note">Average pain per week, oldest to newest over the last 6 weeks.</div></div>':'');
+    var h='<h1>Progress</h1><h2>Calendar</h2>'+calCard()+ins+'<h2>Heart rate and effort</h2><div class="card">'+(hi.length?hi.map(function(t){return '<div class="note" style="margin:0 0 8px;color:var(--ink)">• '+esc(t)+'</div>'}).join(''):'<div class="note" style="margin:0">Nothing notable yet. After a few weeks this shows changes in peak heart rate on your top sets, recovery between sets, time per set, WHOOP strain per minute, resting heart rate and HRV, but only when something has moved.</div>')+'</div>'+'<h2>Strength</h2><p class="note" style="margin:0 0 8px">Estimated max from your best set each session. Orange dots are new records.</p><div class="chips">';
     LIFTS.forEach(function(L){h+='<button type="button" class="chip" data-act="ptab" data-k="'+L.k+'" aria-pressed="'+(L.k===k)+'">'+L.n+'</button>'});
     h+='</div><div class="card" style="margin-top:10px">'+(pts.length?line(pts.map(function(p){return p.e}),pts.map(function(p){return p.pr}),'kg','Estimated max over time'):'<div class="note" style="text-align:center;padding:26px 0">No sessions logged for this lift yet.</div>')+'</div>';
     var ct=U.cTab,cs=Object.keys(S.cardio).map(function(x){return S.cardio[x]}).filter(function(c){return c.mode===ct}).sort(function(a,b){return a.d<b.d?-1:1});
@@ -2070,6 +2315,12 @@ var INFO={
       (w.refresh?'<button class="btn w" type="button" data-act="whsync"'+(WH.busy?' disabled':'')+'>'+(WH.busy?'Syncing…':'Sync WHOOP now')+'</button><button class="btn w" type="button" data-act="whoff">Disconnect WHOOP</button>':
         '<button class="cta" type="button" data-act="whconnect"'+(ac.code?'':' disabled')+'>Connect WHOOP</button>')+
       '<div class="note" style="margin:0" aria-live="polite">'+esc(WH.msg||(w.refresh?'WHOOP connected'+(S.whoop?'. Last sync '+new Date(S.whoop.t).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})+'.':'.'):'Not connected.'))+'</div></div></div>';
+    var wc=wiCfg();
+    h+='<h2>Withings scale (optional)</h2><div class="card"><div class="note" style="margin:0">Your Withings scale already sends weight to WHOOP, and the app picks it up from there whenever WHOOP updates. Connect Withings directly for every weigh-in, plus body-fat and muscle readings. Samsung Health has no web access, so it cannot be read.</div>'+
+      '<div class="stack" style="margin-top:10px"><label class="f">Withings client ID<input type="text" autocomplete="off" autocapitalize="off" id="wiid" value="'+esc(wc.id||'')+'" style="font-size:15px;text-align:left"></label>'+
+      '<button class="btn w" type="button" data-act="wisave">Save client ID</button>'+
+      (wc.refresh?'<button class="btn w" type="button" data-act="wisync"'+(WI.busy?' disabled':'')+'>'+(WI.busy?'Syncing…':'Sync Withings now')+'</button><button class="btn w" type="button" data-act="wioff">Disconnect Withings</button>':'<button class="cta" type="button" data-act="wiconnect"'+(wc.id&&ac.code?'':' disabled')+'>Connect Withings</button>')+
+      '<div class="note" style="margin:0" aria-live="polite">'+esc(WI.msg||(wc.refresh?'Withings connected'+(wc.last?'. Last sync '+new Date(wc.last).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})+'.':'.'):'Not connected.'))+'</div></div></div>';
     var gc=ghCfg();
     h+='<h2>GitHub backup</h2><div class="card"><div class="note" style="margin:0">Saves your log to a private GitHub repo after each session, and lets you restore it on any phone. Cardio photos are saved here too.</div>'+
       '<div class="stack" style="margin-top:10px"><label class="f">Private repo<input type="text" autocomplete="off" autocapitalize="off" id="ghrepo" value="'+esc(gc.repo||'MHNZ666/iron-and-mat-data')+'" style="font-size:15px;text-align:left"></label>'+
@@ -2168,7 +2419,10 @@ var INFO={
     else if(a==='xbg'){if(ev.target===b)U.xw=null;else return}
     else if(a==='xsave'){var f2=U.xw,rec2={id:f2.id||('x'+Date.now()),d:f2.d,type:f2.type,start:f2.start||'',min:num(f2.min),dist:num(f2.dist),hr:num(f2.hr),rpe:f2.rpe||null,note:String(f2.note||'').slice(0,500)};
       S.extra=(S.extra||[]).filter(function(e){return e.id!==rec2.id}).concat([rec2]).sort(function(p,q){return p.d<q.d?-1:1});U.xw=null;setTimeout(function(){ghBackup(false)},300)}
-    else if(a==='rnew'){runReport();return}
+    else if(a==='rnew'){U.rpick=true}
+    else if(a==='rper'){runReport(d.v);return}
+    else if(a==='rpclose'){U.rpick=false}
+    else if(a==='rpbg'){if(ev.target===b)U.rpick=false;else return}
     else if(a==='ropen'){U.ropen=U.ropen===d.id?null:d.id;var rr2=(S.reports||[]).filter(function(x){return x.id===d.id})[0];if(rr2)rr2.seen=true}
     else if(a==='rapply'){var rr3=(S.reports||[]).filter(function(x){return x.id===d.r})[0];if(rr3)applyR(rr3,d.type,d.k)}
     else if(a==='undo'){var u=S.undo;if(u){S.tm[u.k]=u.from;S.undo=null;U.msg='Training max put back to '+fmt(u.from)+' kg.';U.undoShow=false}}
@@ -2180,12 +2434,21 @@ var INFO={
     else if(a==='pflag'){var cur=pOf(lg,d.id),prev=S.pain.filter(function(p){return p.k===lkey(D.id)+'-'+d.id})[0]||{};
       U.pf={id:d.id,name:d.n,part:cur?cur.part:(EX[d.id]&&EX[d.id].knee?'Knee':null),side:cur?cur.side:null,v:cur?cur.v:null,note:prev.note||'',trig:prev.trig||'',had:!!cur}}
     else if(a==='ppart'){U.pf.part=d.v}
+    else if(a==='paddr'){var isx2=U.pf.part&&issueFor(U.pf.part),cur2=U.pf.address!=null?U.pf.address:!!(isx2&&isx2.exs.indexOf(U.pf.id)>=0);U.pf.address=!cur2}
     else if(a==='pside'){U.pf.side=U.pf.side===d.v?null:d.v}
     else if(a==='pv'){U.pf.v=+d.v}
     else if(a==='pclose'){U.pf=null}
     else if(a==='pbg'){if(ev.target===b)U.pf=null;else return}
     else if(a==='psave'){var f=U.pf,key=lkey(D.id)+'-'+f.id;lg.pain[f.id]={v:f.v,part:f.part,side:f.side||''};
-      S.pain=S.pain.filter(function(x){return x.k!==key});S.pain.push({k:key,v:f.v,part:f.part,side:f.side||'',ex:f.name,id:f.id,note:(f.note||'').slice(0,400),trig:(f.trig||'').slice(0,120),d:today()});U.pf=null}
+      S.pain=S.pain.filter(function(x){return x.k!==key});S.pain.push({k:key,v:f.v,part:f.part,side:f.side||'',ex:f.name,id:f.id,note:(f.note||'').slice(0,400),trig:(f.trig||'').slice(0,120),d:today(),addr:!!f.address});
+      var ix=issueFor(f.part),want=f.address!=null?f.address:!!(ix&&ix.exs.indexOf(f.id)>=0);
+      if(want){S.issues=S.issues||[];
+        if(!ix){ix={id:'i'+Date.now().toString(36),part:f.part,side:f.side||'',exs:[],exNames:[],trig:(f.trig||'').slice(0,120),note:(f.note||'').slice(0,400),start:today(),wk:wkKey(),lvl:0,ladder:Prog.mobLadder(f.part,f.trig,f.name),ratings:[],active:true};S.issues.push(ix)}
+        if(ix.exs.indexOf(f.id)<0){ix.exs.push(f.id);ix.exNames.push(f.name)}
+        if(f.side)ix.side=ix.side&&ix.side!==f.side?'Both':f.side;
+        if(!ix.ratings.some(function(r){return r.base&&r.ex===f.id}))ix.ratings.push({d:today(),v:f.v,ex:f.id,k:key,base:true});
+      }
+      U.pf=null}
     else if(a==='pclear'){var key2=lkey(D.id)+'-'+U.pf.id;delete lg.pain[U.pf.id];S.pain=S.pain.filter(function(x){return x.k!==key2});U.pf=null}
     else if(a==='swap'){U.pf=null;U.sw=d.k}
     else if(a==='sclose'){U.sw=null}
@@ -2212,11 +2475,14 @@ var INFO={
     else if(a==='set'){S[d.p]=d.p==='small'?d.v==='1':d.p==='step'?+d.v:d.v}
     else if(a==='mslog'){var mr={d:today()},any=false;['arm','chest','sh','waist'].forEach(function(k){var v=parseFloat($('ms-'+k).value);if(v>0){mr[k]=v;any=true}});
       if(any){S.meas=S.meas||[];if(S.meas.length&&S.meas[S.meas.length-1].d===mr.d)S.meas[S.meas.length-1]=mr;else S.meas.push(mr)}}
-    else if(a==='bwlog'){var w=parseFloat($('bwin').value);if(w>0){var t=today();if(S.bw.length&&S.bw[S.bw.length-1].d===t)S.bw[S.bw.length-1].w=w;else S.bw.push({d:t,w:w})}}
+    else if(a==='bwlog'){var w=parseFloat($('bwin').value);if(w>0)addWeight(today(),w,'manual')}
     else if(a==='dismiss'){S.dismiss[d.id]=true}
     else if(a==='undismiss'){delete S.dismiss[d.id]}
     else if(a==='fb'){lg.fb=lg.fb||{};var fv=+d.v;lg.fb[d.k]=lg.fb[d.k]===fv?null:fv;lg.fb.t=Date.now()}
     else if(a==='hrcon'){hrConnect();return}
+    else if(a==='irate'){var is3=(S.issues||[]).filter(function(x){return x.id===d.iss})[0];if(is3){var k3=lkey(U.day);is3.ratings=is3.ratings.filter(function(r){return !(r.k===k3&&r.ex===d.ex&&!r.base)});is3.ratings.push({d:today(),v:+d.v,ex:d.ex,k:k3});rehabProgress(is3)}}
+    else if(a==='iresolve'||a==='istop'){var is4=(S.issues||[]).filter(function(x){return x.id===d.id})[0];if(is4){is4.active=false;if(a==='iresolve')is4.resolved=today();else is4.stopped=today()}}
+    else if(a==='goalset'){var gv=parseFloat($('goal-'+d.k).value);S.goals=S.goals||{};if(gv>0){var gs=goalSeries(d.k);S.goals[d.k]={to:gv,from:gs.length?gs[gs.length-1].v:null,set:today()}}else delete S.goals[d.k]}
     else if(a==='fbapply'){var ff=(A.findings||[]).filter(function(x){return x.id===d.id})[0];
       if(ff&&ff.act){if(ff.act.t==='tm'){S.undo={k:ff.act.k,from:S.tm[ff.act.k]};S.tm[ff.act.k]=ff.act.v;U.undoShow=true}else S.heavy=!!ff.act.v;S.dismiss[ff.id]=true}}
     else if(a==='applytm'){var ah=A.ahead[d.k];if(ah)S.tm[d.k]=ah.suggest}
@@ -2232,6 +2498,10 @@ var INFO={
     else if(a==='ghsave'){var rp=$('ghrepo').value.trim().replace(/^https:\/\/github.com\//,'').replace(/\/$/,''),tk=$('ghtoken').value.trim();
       if(rp&&!/^[\w.-]+\/[\w.-]+$/.test(rp)){GH.msg='Repo should look like MHNZ666/iron-and-mat-data.';paintGh();return}
       var o=ghCfg();o.repo=rp;o.token=tk;setGh(o);GH.msg=rp&&tk?'Saved. Tap Back up now to test it.':'Cleared.';V();return}
+    else if(a==='wisave'){var wc2=wiCfg();wc2.id=$('wiid').value.trim();setWi(wc2);WI.msg=wc2.id?'Saved. Now tap Connect Withings.':''}
+    else if(a==='wiconnect'){wiConnect();return}
+    else if(a==='wisync'){wiSync(true);return}
+    else if(a==='wioff'){var wc3=wiCfg();setWi({id:wc3.id});WI.msg='Withings disconnected.'}
     else if(a==='ghnow'){ghBackup(true);return}
     else if(a==='ghforce'){GH.force=true;GH.fewer=null;ghBackup(true);return}
     else if(a==='snaprestore'){var si=+d.i;if(U.snapAsk!==si){U.snapAsk=si;V();return}U.snapAsk=null;var sl2=snaps(),sn=sl2[si];
@@ -2263,7 +2533,7 @@ var INFO={
     else if(t.dataset.obw){U.obw=t.value}
     else if(t.dataset.pu){S.pu=t.value===''?'':Math.max(0,Math.round(v));save()}
   });
-  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'){whSync(false);whMatch()}});
+  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'){whSync(false);whMatch();wiSync(false)}});
   whCallback();
   V();
   setTimeout(initSync,0);
