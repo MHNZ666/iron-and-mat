@@ -767,7 +767,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='5.1 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='5.2 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -1004,8 +1004,9 @@ var INFO={
   function loadRatio(endD){
     // last 7 days of WHOOP strain against your average week over the last 28 days
     var e=endD||today(),W=(S.wh||[]).filter(function(x){return x.strain!=null&&x.d<=e});if(W.length<10)return null;
-    var a7=0,a28=0;W.forEach(function(x){if(x.d>addDays(e,-7))a7+=+x.strain;if(x.d>addDays(e,-28))a28+=+x.strain});
-    var ch=a28/4;return ch>0?{acute:Math.round(a7*10)/10,chronic:Math.round(ch*10)/10,ratio:Math.round(a7/ch*100)/100}:null;
+    var s7=[],s28=[];W.forEach(function(x){if(x.d>addDays(e,-7))s7.push(+x.strain);if(x.d>addDays(e,-28))s28.push(+x.strain)});
+    if(s7.length<4||s28.length<10)return null;
+    var a7=avg(s7)*7,ch=avg(s28)*7;return ch>0?{acute:Math.round(a7*10)/10,chronic:Math.round(ch*10)/10,ratio:Math.round(a7/ch*100)/100}:null;
   }
   function readiness(ds){
     var d=ds||today(),w=(S.wh||[]).filter(function(x){return x.d===d})[0];if(!w||w.rec==null)return null;
@@ -1750,14 +1751,15 @@ var INFO={
       deep:st.total_slow_wave_sleep_time_milli?Math.round(st.total_slow_wave_sleep_time_milli/360000)/10:null,rem:st.total_rem_sleep_time_milli?Math.round(st.total_rem_sleep_time_milli/360000)/10:null}}
   function whBackfill(){
     // once: about 6 weeks of recovery and sleep, so changes like a new sleep device have a 'before' to compare with
-    if(S.whBack||WH.back)return;WH.back=true;var start=encodeURIComponent(new Date(Date.now()-45*864e5).toISOString());
+    if(S.whBack&&S.whBack2||WH.back)return;WH.back=true;var start=encodeURIComponent(new Date(Date.now()-45*864e5).toISOString());
     function pages(path,n,tok,acc){return whGet(path+'&limit=25'+(tok?'&nextToken='+encodeURIComponent(tok):'')).then(function(j){acc=acc.concat(j&&j.records||[]);return j&&j.next_token&&n>1?pages(path,n-1,j.next_token,acc):acc})}
-    Promise.all([pages('/v2/recovery?start='+start,3,null,[]),pages('/v2/activity/sleep?start='+start,4,null,[])]).then(function(r){
+    Promise.all([pages('/v2/recovery?start='+start,3,null,[]),pages('/v2/activity/sleep?start='+start,4,null,[]),pages('/v2/cycle?start='+start,3,null,[]).catch(function(){return []})]).then(function(r){
       var byD={};(S.wh||[]).forEach(function(x){byD[x.d]=x});
       function put(d,o){var x=byD[d]=byD[d]||{d:d};Object.keys(o).forEach(function(k){if(o[k]!=null&&x[k]==null)x[k]=o[k]})}
       r[0].forEach(function(x){if(x.score)put(ymdOf(x.created_at||x.updated_at),recFields(x.score))});
       r[1].forEach(function(x){if(x.score&&!x.nap)put(ymdOf(x.end),sleepFields(x))});
-      S.wh=Object.keys(byD).sort().map(function(k){return byD[k]}).slice(-90);S.whBack=Date.now();save();V();
+      r[2].forEach(function(x){if(x.score&&x.score.strain!=null)put(ymdOf(x.start),{strain:Math.round(x.score.strain*10)/10})});
+      S.wh=Object.keys(byD).sort().map(function(k){return byD[k]}).slice(-90);S.whBack=Date.now();S.whBack2=1;save();V();
     }).catch(function(){}).then(function(){WH.back=false});
   }
   /* ---------- health and life changes: what changed, and the numbers before and since ---------- */
@@ -2087,10 +2089,11 @@ var INFO={
       ['w','speed','incline','lvl','hrLo','hrHi','min'].forEach(function(f){var n=num(v[f]);if(n!=null&&n>=0&&n<5000)t[f]=Math.round(n*10)/10});
       if(v.note)t.note=String(v.note).slice(0,240);if(Object.keys(t).length)out[m]=t});return out}
   function normReport(r,kind){
-    var secs=Array.isArray(r.sections)?r.sections.slice(0,10).map(function(s){return {h:String(s&&s.h||'').slice(0,60),t:String(s&&s.t||'').slice(0,2500)}}).filter(function(s){return s.t}):[];
+    var raw=Array.isArray(r.sections)?r.sections:r.sections&&typeof r.sections==='object'?Object.keys(r.sections).map(function(k){return {h:k,t:r.sections[k]}}):[];
+    var secs=raw.slice(0,14).map(function(s){return {h:String(s&&(s.h||s.heading||s.title||s.name)||'').slice(0,60),t:String(s&&(s.t||s.text||s.body||s.content)||'').slice(0,3000)}}).filter(function(s){return s.t});
     return {id:(kind==='weekly'?'w':'i')+(r.date||'')+'-'+Date.now().toString(36),t:Date.now(),date:String(r.date||today()),kind:kind,title:String(r.title||(kind==='weekly'?'Weekly review':'Training report')).slice(0,90),
       text:String(r.text||'').slice(0,8000),sections:secs,changes:Array.isArray(r.changes)?r.changes.slice(0,8).map(function(x){return String(x).slice(0,300)}):[],
-      tm:r.tm&&typeof r.tm==='object'?r.tm:{},subs:cleanSubs(r.subs),targets:cleanTargets(r.targets),applied:{},seen:false,basedOn:String(r.basedOn||'')}
+      tm:r.tm&&typeof r.tm==='object'?r.tm:{},cut:!!r.cut,subs:cleanSubs(r.subs),targets:cleanTargets(r.targets),applied:{},seen:false,basedOn:String(r.basedOn||'')}
   }
   function addReport(rp){S.reports=S.reports||[];if(rp.kind==='weekly'&&S.reports.some(function(x){return x.kind==='weekly'&&x.date===rp.date&&(x.text===rp.text||x.basedOn&&x.basedOn===rp.basedOn)}))return;S.reports.push(rp);if(S.reports.length>200)S.reports=S.reports.slice(-200);save()}
   function migrateReports(){var ch=false;S.reports=S.reports||[];
@@ -2157,16 +2160,24 @@ var INFO={
       'Cardio detail (most recent last): '+(cd.join('; ')||'none')+'. Max heart rate: '+mx+' bpm. Zone 2 target 130-145 bpm. Intervals target 85-95% of max heart rate in the hard minutes.',
       'Write the report as JSON only, with no text before or after it, in this shape. Use these section headings, in this order: '+secs+'. Leave out a section only if there is truly nothing to say. The Summary must be a plain-English overview of performance and the key data for the whole period in 120-200 words: what went well, what did not, the most important numbers, and the one thing to focus on next.',
       '{"title": "short headline", "sections": [{"h": "Summary", "t": "..."}, {"h": "Strength", "t": "..."}, {"h": "Balance and weak points", "t": "..."}, {"h": "Conditioning", "t": "..."}, {"h": "Recovery and load", "t": "..."}, {"h": "Joints and pain", "t": "..."}, {"h": "Next week", "t": "..."}], "changes": ["up to 6 concrete changes that fit inside 45-minute sessions"], "tm": {"squat": number}, "subs": {"<exercise id>": {"n": "name", "sets": 3, "reps": "8-12", "cue": "how to do it", "why": "why it avoids the pain"}}, "targets": {"zone2": {"w": number, "lvl": number, "speed": number, "incline": number, "hrLo": 130, "hrHi": 145, "note": "what to change next time"}, "int": {...}, "sprint": {...}}}',
-      'Rules: plain text inside strings (no markdown, no asterisks). Each section 60-160 words. Use "tm" only for lifts whose training max should change now, rounded to '+inc()+' kg and within 15% of the current value. Use "subs" only for exercises with a pain note. In "targets", give next-session targets for each cardio type with data: if average heart rate was below the target band, raise resistance, watts, speed or incline by about 5%; if it was inside the band, raise by about 2-3%; if above, hold or lower by about 5%. Only include fields that suit the machine used (watts or level for bikes and rowers, speed and incline for treadmills). Do not diagnose injuries; recommend a physio for repeated pain of 4 or more.'
+      'Rules: plain text inside strings (no markdown, no asterisks). Each section 50-130 words; the Summary 120-200 words. Keep the whole reply under 2,500 words. Use "tm" only for lifts whose training max should change now, rounded to '+inc()+' kg and within 15% of the current value. Use "subs" only for exercises with a pain note. In "targets", give next-session targets for each cardio type with data: if average heart rate was below the target band, raise resistance, watts, speed or incline by about 5%; if it was inside the band, raise by about 2-3%; if above, hold or lower by about 5%. Only include fields that suit the machine used (watts or level for bikes and rowers, speed and incline for treadmills). Do not diagnose injuries; recommend a physio for repeated pain of 4 or more.'
     ]).join('\n');
   }
   function parseJSON(t){var m=String(t||'').match(/\{[\s\S]*\}/);if(!m)return null;try{return JSON.parse(m[0])}catch(e){return null}}
+  function rescueReport(t){
+    // a reply cut off part-way: keep every complete section, the title and the changes
+    t=String(t||'');var un=function(s){try{return JSON.parse('"'+s+'"')}catch(e){return s}},secs=[],re=/"h"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"t"\s*:\s*"((?:[^"\\]|\\.)*)"/g,m;
+    while((m=re.exec(t)))secs.push({h:un(m[1]),t:un(m[2])});
+    var tt=t.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/),ch=[],cm=t.match(/"changes"\s*:\s*\[([\s\S]*?)\]/);
+    if(cm){var r2=/"((?:[^"\\]|\\.)*)"/g,x;while((x=r2.exec(cm[1])))ch.push(un(x[1]))}
+    return secs.length?{title:tt?un(tt[1]):'Training report',sections:secs,changes:ch,cut:true}:null;
+  }
   function runReport(per){
     if(U.rbusy)return;U.rbusy=true;U.rerr='';U.rpick=false;V();
-    var pr=periodRange(per),card=snapshot5(per),p=reportPrompt(per),done=function(text){var j=parseJSON(text),rp=normReport(j||{text:text},'instant');if(!j)rp.title='Training report';rp.per=per;rp.range=pr.label;rp.card=card;addReport(rp);U.ropen=rp.id;rp.seen=true;U.rbusy=false;save();V()},
+    var pr=periodRange(per),card=snapshot5(per),p=reportPrompt(per),done=function(text,stop){var j=parseJSON(text)||rescueReport(text),rp=normReport(j||{text:String(text||'').replace(/^[\s\S]*?\{/,'{')},'instant');if(!j)rp.title='Training report';if(j&&j.cut||stop==='max_tokens')rp.cut=true;if(!rp.sections.length&&!rp.text)rp.text='The report came back empty. Tap Create a report now to try again.';rp.per=per;rp.range=pr.label;rp.card=card;addReport(rp);U.ropen=rp.id;rp.seen=true;U.rbusy=false;save();V()},
       fail=function(msg){U.rbusy=false;U.rerr=msg;V()};
     if(inClaude()){window.claude.use('sample').then(function(sample){if(!sample)throw {code:'not_granted'};return sample(p,{modelTier:'complex',cache:false})}).then(function(r){done(r.text)},function(e){fail(e&&e.code==='rate_limited'?'Claude is busy. Try again in a few minutes.':'The report did not finish. Try again.')});return}
-    srv('/review',{prompt:p,max_tokens:per==='today'?2200:4000}).then(function(j){done(j.text)},function(e){fail(e&&e.status===501?'Reports need the Anthropic key on your server.':srvErr(e,'Claude'))});
+    srv('/review',{prompt:p,max_tokens:per==='today'?4000:7500}).then(function(j){done(j.text,j.stop)},function(e){fail(e&&e.status===501?'Reports need the Anthropic key on your server.':srvErr(e,'Claude'))});
   }
   function applyR(r,type,k){
     if(type==='tm'){var v=Core.rnd(+r.tm[k],inc(),'near'),cur=+S.tm[k];if(v>0&&cur&&Math.abs(v-cur)/cur<=0.15){S.tm[k]=v;r.applied['tm-'+k]=true}}
@@ -2188,10 +2199,12 @@ var INFO={
       h+='<div class="card rep"'+(r.seen?'':' style="border-color:var(--sig)"')+'><button type="button" class="rh" data-act="ropen" data-id="'+r.id+'" style="border:0;background:none;padding:0;width:100%;text-align:left;color:inherit" aria-expanded="'+open+'"><span><span class="note" style="margin:0">'+new Date(r.t).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'})+'</span><h3>'+esc(r.title)+'</h3></span><span class="kind'+(r.kind==='weekly'?' weekly':'')+'">'+(r.kind==='weekly'?'Weekly':'On demand')+'</span></button>';
       if(!open){h+='<div class="note">'+esc(first)+(first.length>=140?'…':'')+'</div></div>';return}
       if(r.range)h+='<div class="note" style="margin:6px 0 0">'+esc(r.range)+'</div>';
+      if(r.cut)h+='<div class="note" style="color:var(--knee)">This report was cut short, so a section or two may be missing.</div>';
       var secs2=r.sections.slice(),s0=secs2.length&&/summary/i.test(secs2[0].h)?secs2.shift():null;
       if(s0)h+='<div class="rsec"><h4>'+esc(s0.h)+'</h4><p>'+esc(s0.t)+'</p></div>';
       h+=cardHtml(r.card);
       if(secs2.length)secs2.forEach(function(s){h+='<div class="rsec"><h4>'+esc(s.h)+'</h4><p>'+esc(s.t)+'</p></div>'});
+      if(!r.sections.length&&!r.text)h+='<div class="rsec"><p>The written part of this report did not come through. Tap Create a report now to write it again; the fix in version 5.2 stops this happening.</p></div>';
       else if(r.text)h+='<div class="rsec"><p>'+esc(r.text)+'</p></div>';
       if(r.changes.length)h+='<div class="rsec"><h4>Changes to make</h4><ul class="dl">'+r.changes.map(function(c){return '<li>'+esc(c)+'</li>'}).join('')+'</ul></div>';
       var tmK=Object.keys(r.tm||{}).filter(function(k){var v=+r.tm[k],c=+S.tm[k];return v>0&&c&&Math.abs(v-c)/c<=0.15&&Math.abs(v-c)>0.01||r.applied['tm-'+k]});

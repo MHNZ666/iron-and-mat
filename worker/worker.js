@@ -131,15 +131,15 @@ export default {
     if (path === "/" || path === "/review") {
       if (!env.ANTHROPIC_API_KEY) return reply(501, { error: "Instant reviews are not set up on this server." });
       const prompt = String(body.prompt || "");
-      if (!prompt || prompt.length > 20000) return reply(400, { error: "Missing or oversized prompt." });
+      if (!prompt || prompt.length > 80000) return reply(400, { error: "Missing or oversized prompt." });
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-        body: JSON.stringify({ model: MODEL, max_tokens: Math.min(4000, Math.max(300, parseInt(body.max_tokens, 10) || 900)), messages: [{ role: "user", content: prompt }] }),
+        body: JSON.stringify({ model: MODEL, max_tokens: Math.min(8000, Math.max(300, parseInt(body.max_tokens, 10) || 900)), messages: [{ role: "user", content: prompt }] }),
       });
       if (!r.ok) return reply(r.status === 429 ? 429 : 502, { error: "Anthropic API error " + r.status });
       const j = await r.json();
-      return reply(200, { text: (j.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n") });
+      return reply(200, { text: (j.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n"), stop: j.stop_reason || "" });
     }
 
     return reply(404, { error: "Unknown route." });
