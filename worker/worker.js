@@ -1,13 +1,17 @@
-// Iron and Mat review server (Cloudflare Worker).
-// It keeps your Anthropic API key private and only answers the app.
+// Iron and Mat server (Cloudflare Worker).
+// Keeps your secrets off the public app: the WHOOP client secret and, optionally, an Anthropic API key.
 //
-// Settings to add in Cloudflare (Settings > Variables and Secrets):
-//   ANTHROPIC_API_KEY  (Secret)  your key from console.anthropic.com
-//   ACCESS_CODE        (Secret)  a long passphrase you make up; enter the same one in the app
-//   ALLOWED_ORIGIN     (Text)    https://mhnz666.github.io
+// Variables and Secrets to add in Cloudflare (Settings > Variables and Secrets):
+//   ACCESS_CODE          Secret  a long passphrase you make up; enter the same one in the app
+//   ALLOWED_ORIGIN       Text    https://mhnz666.github.io
+//   WHOOP_CLIENT_ID      Text    from the WHOOP developer dashboard
+//   WHOOP_CLIENT_SECRET  Secret  from the WHOOP developer dashboard
+//   ANTHROPIC_API_KEY    Secret  optional, only for instant Claude reviews in the app
 
 const MODEL = "claude-sonnet-5-5";
-const MAX_PROMPT = 12000;
+const WHOOP_TOKEN = "https://api.prod.whoop.com/oauth/oauth2/token";
+const WHOOP_API = "https://api.prod.whoop.com/developer";
+const WHOOP_PATHS = /^\/v[12]\/(recovery|cycle|activity\/sleep|activity\/workout|user\/profile\/basic|user\/measurement\/body)(\/[\w-]+)*(\?[\w=&:.%+-]*)?$/;
 
 export default {
   async fetch(request, env) {
@@ -23,27 +27,61 @@ export default {
       new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+    if (request.method === "GET") return reply(200, { ok: true, message: "Iron and Mat server is running." });
     if (request.method !== "POST") return reply(405, { error: "Use POST." });
     if (origin && request.headers.get("Origin") !== origin) return reply(403, { error: "Not allowed from this site." });
     if (!env.ACCESS_CODE || request.headers.get("X-Access-Code") !== env.ACCESS_CODE) return reply(401, { error: "Wrong access code." });
-    if (!env.ANTHROPIC_API_KEY) return reply(500, { error: "The server has no API key set." });
 
-    let prompt = "";
-    try { prompt = String((await request.json()).prompt || ""); } catch (e) { return reply(400, { error: "Bad request." }); }
-    if (!prompt || prompt.length > MAX_PROMPT) return reply(400, { error: "Missing or oversized prompt." });
+    let body = {};
+    try { body = await request.json(); } catch (e) { return reply(400, { error: "Bad request." }); }
+    const path = new URL(request.url).pathname.replace(/\/+$/, "") || "/";
 
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ model: MODEL, max_tokens: 900, messages: [{ role: "user", content: prompt }] }),
-    });
-    if (!r.ok) return reply(r.status === 429 ? 429 : 502, { error: "Anthropic API error " + r.status });
-    const j = await r.json();
-    const text = (j.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n");
-    return reply(200, { text });
+    // WHOOP: swap the one-time login code for tokens
+    if (path === "/whoop/token" || path === "/whoop/refresh") {
+      if (!env.WHOOP_CLIENT_ID || !env.WHOOP_CLIENT_SECRET) return reply(500, { error: "WHOOP is not set up on the server." });
+      const form = new URLSearchParams({ client_id: env.WHOOP_CLIENT_ID, client_secret: env.WHOOP_CLIENT_SECRET });
+      if (path === "/whoop/token") {
+        if (!body.code || !body.redirect_uri) return reply(400, { error: "Missing code." });
+        form.set("grant_type", "authorization_code");
+        form.set("code", String(body.code));
+        form.set("redirect_uri", String(body.redirect_uri));
+      } else {
+        if (!body.refresh_token) return reply(400, { error: "Missing refresh token." });
+        form.set("grant_type", "refresh_token");
+        form.set("refresh_token", String(body.refresh_token));
+        form.set("scope", "offline");
+      }
+      const r = await fetch(WHOOP_TOKEN, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) return reply(r.status === 400 || r.status === 401 ? 401 : 502, { error: "WHOOP login failed (" + r.status + ")." });
+      return reply(200, { access_token: j.access_token, refresh_token: j.refresh_token, expires_in: j.expires_in });
+    }
+
+    // WHOOP: read data (only the endpoints this app uses)
+    if (path === "/whoop/get") {
+      const p = String(body.path || "");
+      if (!body.access_token || !WHOOP_PATHS.test(p)) return reply(400, { error: "Not an allowed WHOOP request." });
+      const r = await fetch(WHOOP_API + p, { headers: { Authorization: "Bearer " + body.access_token } });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) return reply(r.status === 401 ? 401 : r.status === 429 ? 429 : 502, { error: "WHOOP returned " + r.status + "." });
+      return reply(200, j);
+    }
+
+    // Instant Claude review (optional)
+    if (path === "/" || path === "/review") {
+      if (!env.ANTHROPIC_API_KEY) return reply(501, { error: "Instant reviews are not set up on this server." });
+      const prompt = String(body.prompt || "");
+      if (!prompt || prompt.length > 12000) return reply(400, { error: "Missing or oversized prompt." });
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model: MODEL, max_tokens: 900, messages: [{ role: "user", content: prompt }] }),
+      });
+      if (!r.ok) return reply(r.status === 429 ? 429 : 502, { error: "Anthropic API error " + r.status });
+      const j = await r.json();
+      return reply(200, { text: (j.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n") });
+    }
+
+    return reply(404, { error: "Unknown route." });
   },
 };
