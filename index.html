@@ -249,7 +249,7 @@ var Core=(function(){
 var Prog=(function(){
   // rest in seconds. load:true tracks a working weight. eq tells the WHOOP summary how to describe the load.
   var EX={
-    sled:{n:'Backward incline walk',sets:1,reps:'3 min',rest:0,timer:'sled',eq:'time',cue:'Walk backward on a treadmill set to an incline, hands light on the rails, easy pace. Continuous, with no joint pressure.'},
+    sled:{n:'Backward incline walk',sets:1,reps:'3 min',rest:0,timer:'sled',eq:'time',rw:true,cue:'Clip the safety key on. Land on the ball of the foot, roll to the heel, and let the knee travel forward. Hands light on the rails, chest tall.'},
     tib:{n:'Tibialis wall raise',sets:2,reps:'15–20',rest:0,eq:'bw',cue:'Heels out in front, back on a wall. Pull the toes up hard toward the shins.'},
     calf:{n:'Knees-over-toes calf raise',sets:2,reps:'15',rest:0,eq:'bw',cue:'Knees bent slightly over the toes to target the soleus.'},
     patrick:{n:'Patrick step',sets:2,reps:'8/side',rest:30,knee:true,eq:'bw',cue:'Step down on one leg, hips forward, tap the floor, step back up slowly. Stay pain-free.'},
@@ -610,7 +610,7 @@ var INFO={
   'main-bench':{a:'bench',b:'Pressing strength for framing, creating space and pushing off from bottom positions.',c:['Shoulder blades pulled together and down into the bench.','Lower the bar to the lower chest with elbows about 45 degrees out.','Feet planted; press the bar back up over the shoulders.']},
   'main-dead':{a:'deadlift',b:'Whole posterior chain and grip strength: posture in guard, lifting and resisting being stacked.',c:['Bar over the middle of the foot, shins close to it.','Pull the slack out of the bar before it leaves the floor.','Push the floor away; hips and shoulders rise together.']},
   'main-press':{a:'press',b:'Overhead strength and shoulder stability, which protects the shoulder in frames and scrambles.',c:['Squeeze the glutes and keep the ribs down so the back does not arch.','Move the head back slightly to let the bar pass, then push through.','Finish with the bar over the middle of the foot, biceps by the ears.']},
-  sled:{a:'walkback',b:'Warms the knees and quads with no impact. A gentle start for knee tendons.',c:['Small steps backward, landing on the ball of the foot.','Let the knee bend forward over the toes on each step.','Easy pace; you should be able to talk.']},
+  sled:{a:'walkback',b:'Works the quads and knee extensors harder than forward walking, with less compression behind the kneecap. Incline adds load. A gentle, low-impact warm-up for the knees.',c:['Clip on the safety key. Start slow, about half your forward walking pace.','Land on the ball of the foot, roll to the heel, and let the knee travel over the toes.','Raise the incline before the speed. Hands light on the rails, chest tall, no hunching.']},
   tib:{a:'tib',b:'Strengthens the shin muscle that slows the knee down, which helps knee and ankle resilience.',c:['Heels out in front, back against the wall.','Pull the toes up as high as you can, pause at the top.','Lower slowly; move the feet further out to make it harder.']},
   calf:{a:'calf',b:'Bent-knee calf raises train the soleus and Achilles, which support the knee and ankle.',c:['Keep the knees bent forward over the toes throughout.','Rise as high as you can and pause.','Lower all the way down under control.']},
   patrick:{a:'patrick',b:'Teaches the knee to be strong in a deep, knee-forward position. A stepping stone to the split squat.',c:['Stand on the step on one leg, hips facing forward.','Bend the standing knee forward over the toes as you lower.','Tap the floor lightly with the other heel and rise slowly.']},
@@ -680,7 +680,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='4.5 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='4.6 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -694,7 +694,7 @@ var INFO={
     ex:{squat:{w:100,r:5},bench:{w:70,r:5},dead:{w:140,r:5},press:{w:47.5,r:5}},
     tm:{},cycle:1,week:0,logs:{},hist:[],loads:{},alts:{},pain:[],
     h:'',bw:[],pu:'',loadHist:{},dismiss:{},claude:null,reviewDue:false,u:0,
-    step:5,subs:{},custom:{},cardio:{},lnote:{},undo:null,wh:[],whoop:null,whw:[],extra:[],reports:[],ctarget:{}}}
+    step:5,subs:{},custom:{},cardio:{},lnote:{},undo:null,wh:[],whoop:null,whw:[],extra:[],reports:[],ctarget:{},rw:{lvl:1,ok:0,hist:[]}}}
   function load(){try{var j=localStorage.getItem(KEY);if(j)return Object.assign(defaults(),JSON.parse(j))}catch(e){}return defaults()}
   var S=load();
   function mergeCustom(){Object.keys(S.custom||{}).forEach(function(k){EX[k]=S.custom[k]})}
@@ -1018,6 +1018,7 @@ var INFO={
     h+='<div class="note" style="margin-top:4px">'+esc(e.cue||'')+'</div>';
     if(e.alt&&!swapped){h+='<div class="chips" role="group" aria-label="Choose version"><button type="button" class="chip" data-act="alt" data-id="'+id+'" data-a="" aria-pressed="'+(baseOf(id)===id)+'">'+(id==='throw'?'Cable woodchop':'Powell raise')+'</button><button type="button" class="chip" data-act="alt" data-id="'+id+'" data-a="'+e.alt+'" aria-pressed="'+(baseOf(id)!==id)+'">'+(e.alt==='slam'?'Landmine rotation':'External rotation')+'</button></div>'}
     if(S.lnote[rid])h+='<div class="note" style="color:var(--ok)">'+esc(S.lnote[rid])+'</div>';
+    if(e.rw)h+=rwCard(lg);
     if(e.pu)h+='<div class="ldrow"><label class="f">Best strict set (reps)<input type="number" inputmode="numeric" data-pu="1" value="'+esc(S.pu)+'" placeholder="0"></label><div></div></div>';
     if(e.timer)h+='<div style="margin-top:10px"><button class="btn s" type="button" data-act="seq" data-k="'+e.timer+'">Start timer</button></div>';
     if(e.load||r){
@@ -1059,6 +1060,25 @@ var INFO={
       '<label class="btn w photo" style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px">'+(c.photo?'Retake photo of the screen':'Take a photo of the screen')+'<input type="file" accept="image/*" capture="environment" data-photo="'+key+'" hidden></label>'+
       '<div class="note" id="ph-'+key+'">'+esc(ph||(c.read?'Numbers read from your photo. Check them and correct anything wrong.':c.photo?'Photo saved. Any blanks are filled in by the Sunday review.':'Take a photo at the end of the session and the app reads the numbers for you, or type them in.'))+'</div></div>';
     return h;
+  }
+  /* ---------- backward incline walk ladder ---------- */
+  var RW=[{s:2.5,i:2},{s:2.5,i:5},{s:3.0,i:5},{s:3.0,i:8},{s:3.0,i:10},{s:3.5,i:12}];
+  function rwState(){S.rw=S.rw||{lvl:1,ok:0,hist:[]};return S.rw}
+  function rwCard(lg){
+    var st=rwState(),t=RW[st.lvl-1],v=lg.rw||{};
+    return '<div class="nexttgt"><b>Today: '+t.s.toFixed(1)+' km/h at '+t.i+'% incline</b> (level '+st.lvl+' of '+RW.length+'). '+(st.lvl<RW.length?'Two pain-free sessions in a row move you up a level.':'Top level: hold here, or add a few minutes.')+' Knee pain of 4 or more drops you back one.</div>'+
+      '<div class="fields" style="grid-template-columns:1fr 1fr;margin-top:8px"><label class="f">Speed km/h<input type="number" inputmode="decimal" step="any" data-rw="speed" value="'+(v.speed!=null?v.speed:t.s)+'"></label><label class="f">Incline %<input type="number" inputmode="decimal" step="any" data-rw="incline" value="'+(v.incline!=null?v.incline:t.i)+'"></label></div>';
+  }
+  function rwFinish(lg){
+    if(!(lg.ex&&(lg.ex.sled||[])[0])||lg.rwDone)return;
+    var st=rwState(),t=RW[st.lvl-1],v=lg.rw||{},knee=0;
+    Object.keys(lg.pain||{}).forEach(function(k){var p=pOf(lg,k);if(p&&(p.part||'Knee')==='Knee'&&p.v>knee)knee=p.v});
+    lg.rw={speed:v.speed!=null?v.speed:t.s,incline:v.incline!=null?v.incline:t.i};
+    st.hist.push({d:today(),speed:lg.rw.speed,incline:lg.rw.incline,lvl:st.lvl,knee:knee});if(st.hist.length>60)st.hist=st.hist.slice(-60);
+    if(knee>=4){st.lvl=Math.max(1,st.lvl-1);st.ok=0}
+    else if(knee===3)st.ok=0;
+    else{st.ok++;if(st.ok>=2&&st.lvl<RW.length){st.lvl++;st.ok=0}}
+    lg.rwDone=true;
   }
   function maxHR(){return S.whoop&&S.whoop.maxhr||190}
   function band(mode){var mx=maxHR();return mode==='zone2'?[130,145]:mode==='int'?[Math.round(mx*.85),Math.round(mx*.95)]:null}
@@ -1227,6 +1247,7 @@ var INFO={
       if(e.load&&(e.eq==='db'))out.push('Weight convention: per hand');
       if(e.load&&e.eq==='db1')out.push('Weight convention: one dumbbell');
       for(var i=0;i<cnt;i++){var x=xSet(lg,rid,i);if(!x.done)continue;k++;
+        if(e.rw){var rv=lg.rw||{},rt=RW[rwState().lvl-1];out.push('Set '+k+': 3 min at '+(rv.speed!=null?rv.speed:rt.s)+' km/h, '+(rv.incline!=null?rv.incline:rt.i)+'% incline');continue}
         if(e.eq==='time'){out.push('Set '+k+': '+e.reps.replace('/side',' per side'));continue}
         var w=e.load?num(x.w):null,rr=r?x.r:e.reps.replace('/side',' per side');
         if(e.load&&w==null)miss.push(e.n+' set '+k+' has no weight');
@@ -1578,6 +1599,7 @@ var INFO={
     var cd=Object.keys(S.cardio).map(function(k){var c=S.cardio[k];return c.d+' '+c.mode+(c.machine?' '+c.machine:'')+(c.min?' '+c.min+'min':'')+(c.dist?' '+c.dist+'km':'')+(c.w?' '+c.w+'W':'')+(c.hr?' HR'+c.hr:'')+(c.photo&&!(c.w||c.dist||c.cal)?' [photo '+c.photo+' needs reading]':'')}).slice(-10);
     lines.push('Cardio sessions: '+(cd.join('; ')||'none')+'.');
     var nts=doneLogs().filter(function(x){return x.l.note}).sort(function(p,q){return p.l.t0-q.l.t0}).slice(-8).map(function(x){return ymdOf(x.l.t0)+' '+x.id+': '+x.l.note});
+    var rws=rwState();lines.push('Backward incline walk warm-up: level '+rws.lvl+' of '+RW.length+'; recent: '+(rws.hist.slice(-6).map(function(x){return x.d+' '+x.speed+'km/h '+x.incline+'% knee '+x.knee}).join('; ')||'none')+'.');
     lines.push('Session notes from the lifter: '+(nts.join(' | ')||'none')+'.');
     lines.push('Extra workouts logged in the app: '+((S.extra||[]).slice(-10).map(function(e){return e.d+' '+e.type+(e.min?' '+e.min+'min':'')+(e.dist?' '+e.dist+'km':'')+(e.rpe?' effort '+e.rpe+'/10':'')+(e.note?' ('+e.note+')':'')}).join('; ')||'none')+'.');
     lines.push('Other WHOOP-recorded activities, such as jiu-jitsu (not the gym sessions above): '+((S.whw||[]).filter(function(w){return !matchedWh(w)}).slice(-14).map(function(w){return w.d+' '+w.sport+' '+w.min+'min strain '+w.strain+(w.avg?' avgHR '+w.avg:'')}).join('; ')||'none')+'.');
@@ -1773,7 +1795,7 @@ var INFO={
     else if(a==='alt'){if(d.a)S.alts[d.id]=d.a;else delete S.alts[d.id]}
     else if(a==='cmach'){var c=cardioEntry(d.k,D,d.k.split('-').pop());c.machine=c.machine===d.v?'':d.v}
     else if(a==='seq'){startSeq(d.k==='zone2'?'Zone 2':d.k==='int'?'Intervals':d.k==='sprint'?'Sprints':d.k==='hang'?'Hangs':d.k==='couch'?'Stretch':'Warm-up',seqFor(d.k));if(lg){touch(lg);save()}return}
-    else if(a==='finish'){if(!lg.t0)touch(lg);if(!lg.done){lg.t1=Date.now()}lg.mins=Math.max(1,Math.round((endOf(lg)-lg.t0)/60000));U.tedit=false;progressAccessories(lg);lg.done=true;lg.skipped=false;stopTimer();U.lv=null;U.copied='';setTimeout(function(){ghBackup(true);whSync(true);whMatch()},500);setTimeout(whMatch,2.5*60000);setTimeout(whMatch,10*60000)}
+    else if(a==='finish'){if(!lg.t0)touch(lg);if(!lg.done){lg.t1=Date.now()}lg.mins=Math.max(1,Math.round((endOf(lg)-lg.t0)/60000));U.tedit=false;progressAccessories(lg);rwFinish(lg);lg.done=true;lg.skipped=false;stopTimer();U.lv=null;U.copied='';setTimeout(function(){ghBackup(true);whSync(true);whMatch()},500);setTimeout(whMatch,2.5*60000);setTimeout(whMatch,10*60000)}
     else if(a==='copywhoop'){copyText(whoop(D,lg).text,function(){U.copied='whoop';V()},'whoopbox');return}
     else if(a==='skip'){lg.skipped=true;lg.done=false;U.view='today';stopTimer()}
     else if(a==='unskip'){lg.skipped=false}
@@ -1823,6 +1845,7 @@ var INFO={
     else if(t.dataset.cf&&D){var c=cardioEntry(t.dataset.k,D,t.dataset.k.split('-').pop());c[t.dataset.cf]=t.value===''?null:v;save()}
     else if(t.dataset.pf&&U.pf){U.pf[t.dataset.pf]=t.value}
     else if(t.dataset.xf&&U.xw){U.xw[t.dataset.xf]=t.value}
+    else if(t.dataset.rw&&lg){lg.rw=lg.rw||{};lg.rw[t.dataset.rw]=t.value===''?null:v;save()}
     else if(t.dataset.note&&lg){lg.note=t.value.slice(0,1000);save()}
     else if(t.dataset.h){S.h=t.value===''?'':v;save()}
     else if(t.dataset.obw){U.obw=t.value}
