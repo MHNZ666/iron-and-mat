@@ -767,7 +767,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='5.0 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='5.1 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -781,7 +781,7 @@ var INFO={
     ex:{squat:{w:100,r:5},bench:{w:70,r:5},dead:{w:140,r:5},press:{w:47.5,r:5}},
     tm:{},cycle:1,week:0,logs:{},hist:[],loads:{},alts:{},pain:[],
     h:'',bw:[],pu:'',loadHist:{},dismiss:{},claude:null,reviewDue:false,u:0,
-    step:5,subs:{},custom:{},cardio:{},lnote:{},undo:null,wh:[],whoop:null,whw:[],extra:[],reports:[],ctarget:{},rw:{lvl:1,ok:0,hist:[]},meas:[],issues:[],goals:{}}}
+    step:5,subs:{},custom:{},cardio:{},lnote:{},undo:null,wh:[],whoop:null,whw:[],extra:[],reports:[],ctarget:{},rw:{lvl:1,ok:0,hist:[]},meas:[],issues:[],goals:{},events:[]}}
   /* ---------- data safety: nothing is overwritten without a copy being kept first ---------- */
   var SNAPKEY='iron-mat-snapshots',Safe={blocked:false,warn:''};
   function nLogs(o){var n=0;Object.keys(o&&o.logs||{}).forEach(function(k){var l=o.logs[k];if(l&&(l.done||l.t0))n++});return n}
@@ -1743,6 +1743,42 @@ var INFO={
       if(e&&e.status===401&&!retry&&!(e.msg&&/access code/i.test(e.msg))){var w=whCfg();w.exp=0;setWh(w);return whGet(path,true)}throw e});
   }
   function first(j){return j&&j.records&&j.records[0]||null}
+  function recFields(sc){return {rec:Math.round(sc.recovery_score),hrv:Math.round(sc.hrv_rmssd_milli),rhr:Math.round(sc.resting_heart_rate),spo2:sc.spo2_percentage!=null?Math.round(sc.spo2_percentage*10)/10:null,temp:sc.skin_temp_celsius!=null?Math.round(sc.skin_temp_celsius*10)/10:null}}
+  function sleepFields(x){var sc=x.score,st=sc.stage_summary||{};
+    return {sleep:Math.round(sc.sleep_performance_percentage||0),sleepH:st.total_in_bed_time_milli?Math.round((st.total_in_bed_time_milli-(st.total_awake_time_milli||0))/360000)/10:null,bed:x.start?hhmm(new Date(x.start).getTime()):null,wake:x.end?hhmm(new Date(x.end).getTime()):null,
+      resp:sc.respiratory_rate!=null?Math.round(sc.respiratory_rate*10)/10:null,dist:st.disturbance_count!=null?st.disturbance_count:null,eff:sc.sleep_efficiency_percentage!=null?Math.round(sc.sleep_efficiency_percentage):null,
+      deep:st.total_slow_wave_sleep_time_milli?Math.round(st.total_slow_wave_sleep_time_milli/360000)/10:null,rem:st.total_rem_sleep_time_milli?Math.round(st.total_rem_sleep_time_milli/360000)/10:null}}
+  function whBackfill(){
+    // once: about 6 weeks of recovery and sleep, so changes like a new sleep device have a 'before' to compare with
+    if(S.whBack||WH.back)return;WH.back=true;var start=encodeURIComponent(new Date(Date.now()-45*864e5).toISOString());
+    function pages(path,n,tok,acc){return whGet(path+'&limit=25'+(tok?'&nextToken='+encodeURIComponent(tok):'')).then(function(j){acc=acc.concat(j&&j.records||[]);return j&&j.next_token&&n>1?pages(path,n-1,j.next_token,acc):acc})}
+    Promise.all([pages('/v2/recovery?start='+start,3,null,[]),pages('/v2/activity/sleep?start='+start,4,null,[])]).then(function(r){
+      var byD={};(S.wh||[]).forEach(function(x){byD[x.d]=x});
+      function put(d,o){var x=byD[d]=byD[d]||{d:d};Object.keys(o).forEach(function(k){if(o[k]!=null&&x[k]==null)x[k]=o[k]})}
+      r[0].forEach(function(x){if(x.score)put(ymdOf(x.created_at||x.updated_at),recFields(x.score))});
+      r[1].forEach(function(x){if(x.score&&!x.nap)put(ymdOf(x.end),sleepFields(x))});
+      S.wh=Object.keys(byD).sort().map(function(k){return byD[k]}).slice(-90);S.whBack=Date.now();save();V();
+    }).catch(function(){}).then(function(){WH.back=false});
+  }
+  /* ---------- health and life changes: what changed, and the numbers before and since ---------- */
+  function evCompare(ev){
+    var W=S.wh||[],pre=W.filter(function(x){return x.d<ev.d&&x.d>=addDays(ev.d,-21)}),post=W.filter(function(x){return x.d>=ev.d});
+    var F=[['rec','Recovery','%',1],['hrv','HRV','ms',1],['rhr','Resting HR','bpm',-1],['sleep','Sleep performance','%',1],['sleepH','Hours asleep','h',1],['eff','Sleep efficiency','%',1],['resp','Breathing rate asleep','/min',0],['dist','Sleep disturbances','',-1],['spo2','Blood oxygen','%',1],['deep','Deep sleep','h',1]];
+    var rows=F.map(function(f){var a=avg(pre.map(function(x){return x[f[0]]})),b=avg(post.map(function(x){return x[f[0]]}));return a!=null&&b!=null?{n:f[1],u:f[2],good:f[3],a:Math.round(a*10)/10,b:Math.round(b*10)/10}:null}).filter(Boolean);
+    var eb=[],ea=[];doneLogs().forEach(function(x){var fb=x.l.fb;if(fb&&fb.energy){(logDate(x.l)<ev.d?eb:ea).push(fb.energy)}});
+    return {rows:rows,npre:pre.length,npost:post.length,energy:ea.length?{a:eb.length?Math.round(avg(eb)*10)/10:null,b:Math.round(avg(ea)*10)/10,n:ea.length}:null};
+  }
+  function eventsCard(){
+    var E=(S.events||[]).slice().sort(function(a,b){return a.d<b.d?1:-1}),h='<div class="note" style="margin:0">Log anything that might change how you train or recover: a new sleep device, illness, travel, a diet change, new medication. Reports compare your numbers before and since.</div>'+
+      '<div class="fields" style="grid-template-columns:1fr 2fr;margin-top:10px"><label class="f">Date<input type="date" id="evd" value="'+today()+'"></label><label class="f">What changed<input type="text" id="evt" placeholder="e.g. started a sleep apnoea mouth guard" style="font-size:15px;text-align:left"></label></div><div style="margin-top:10px"><button class="btn w" type="button" data-act="evadd">Add</button></div>';
+    E.forEach(function(ev){var c=evCompare(ev);
+      h+='<div class="card" style="margin-top:10px"><div class="row"><b>'+esc(ev.t)+'</b><button class="linkb" type="button" data-act="evdel" data-id="'+ev.id+'">'+(U.evdel===ev.id?'Tap again to delete':'Delete')+'</button></div><div class="note" style="margin:2px 0 0">'+new Date(ev.d+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})+' · '+c.npre+' days before, '+c.npost+' since</div>';
+      if(c.rows.length&&c.npre&&c.npost)h+='<div style="overflow-x:auto"><table class="st"><tr><th></th><th>Before</th><th>Since</th></tr>'+c.rows.map(function(r){var d=r.b-r.a,col=!r.good||Math.abs(d)<0.05?'inherit':(d*r.good>0?'var(--ok)':'var(--sig)');return '<tr><td>'+r.n+'</td><td>'+r.a+(r.u?' '+r.u:'')+'</td><td style="color:'+col+'">'+r.b+(r.u?' '+r.u:'')+'</td></tr>'}).join('')+'</table></div>';
+      else h+='<div class="note">Comparison appears once there is WHOOP data on both sides of this date.</div>';
+      if(c.energy)h+='<div class="note">Session energy rating since: '+c.energy.b+' of 3'+(c.energy.a!=null?' (before: '+c.energy.a+')':'')+'.</div>';
+      h+='</div>'});
+    return h;
+  }
   function whSync(force){
     var w=whCfg();if(!w.refresh||WH.busy)return;
     if(!force&&S.whoop&&Date.now()-S.whoop.t<5*60000)return;
@@ -1753,9 +1789,9 @@ var INFO={
       whGet('/v2/activity/workout?start='+encodeURIComponent(since)+'&limit=25').catch(nil)])
     .then(function(r){
       var day={},put=function(d,o){var x=day[d]=day[d]||{d:d};Object.keys(o).forEach(function(k){if(o[k]!=null&&x[k]==null)x[k]=o[k]})};
-      ((r[0]&&r[0].records)||[]).forEach(function(x){if(x.score)put(ymdOf(x.created_at||x.updated_at),{rec:Math.round(x.score.recovery_score),hrv:Math.round(x.score.hrv_rmssd_milli),rhr:Math.round(x.score.resting_heart_rate)})});
+      ((r[0]&&r[0].records)||[]).forEach(function(x){if(x.score)put(ymdOf(x.created_at||x.updated_at),recFields(x.score))});
       ((r[1]&&r[1].records)||[]).forEach(function(x){if(!x.score||x.nap)return;var st=x.score.stage_summary||{};
-        put(ymdOf(x.end),{sleep:Math.round(x.score.sleep_performance_percentage||0),sleepH:st.total_in_bed_time_milli?Math.round((st.total_in_bed_time_milli-(st.total_awake_time_milli||0))/360000)/10:null,bed:x.start?hhmm(new Date(x.start).getTime()):null,wake:x.end?hhmm(new Date(x.end).getTime()):null})});
+        put(ymdOf(x.end),sleepFields(x))});
       ((r[2]&&r[2].records)||[]).forEach(function(x){if(x.score)put(ymdOf(x.start),{strain:Math.round(x.score.strain*10)/10})});
       var byD={};(S.wh||[]).forEach(function(x){byD[x.d]=x});Object.keys(day).forEach(function(k){byD[k]=Object.assign(byD[k]||{},day[k])});
       S.wh=Object.keys(byD).sort().map(function(k){return byD[k]}).slice(-60);
@@ -1770,7 +1806,7 @@ var INFO={
         if(body.weight_kilogram){var bw=Math.round(body.weight_kilogram*10)/10;if(S.whBody!==bw){S.whBody=bw;addWeight(today(),bw,'whoop')}}
         if(body.max_heart_rate)o.maxhr=body.max_heart_rate}
       S.whoop=o;WH.msg='';save();
-    },function(e){WH.msg=e&&e.none?'':srvErr(e,'WHOOP')}).then(function(){WH.busy=false;V();whMatch();wiSync(false)});
+    },function(e){WH.msg=e&&e.none?'':srvErr(e,'WHOOP')}).then(function(){WH.busy=false;V();whMatch();wiSync(false);whBackfill()});
   }
   function zones(sc){var z=sc&&sc.zone_durations||sc&&sc.zone_duration;if(!z)return null;return ['zone_zero_milli','zone_one_milli','zone_two_milli','zone_three_milli','zone_four_milli','zone_five_milli'].map(function(k){return Math.round((+z[k]||0)/6000)/10})}
   function whMatch(){
@@ -2066,7 +2102,8 @@ var INFO={
   function periodData(from,to){
     var L=[],inR=function(d){return d&&d>=from&&d<=to};
     var W=(S.wh||[]).filter(function(x){return inR(x.d)});
-    L.push('WHOOP days in this period: '+(W.map(function(x){return x.d+': recovery '+(x.rec!=null?x.rec+'%':'?')+', HRV '+(x.hrv||'?')+' ms, resting HR '+(x.rhr||'?')+', sleep '+(x.sleep!=null?x.sleep+'%':'?')+(x.sleepH?' ('+x.sleepH+' h, bed '+(x.bed||'?')+', wake '+(x.wake||'?')+')':'')+', day strain '+(x.strain!=null?x.strain:'?')}).join('; ')||'none')+'.');
+    L.push('WHOOP days in this period: '+(W.map(function(x){return x.d+': recovery '+(x.rec!=null?x.rec+'%':'?')+', HRV '+(x.hrv||'?')+' ms, resting HR '+(x.rhr||'?')+', sleep '+(x.sleep!=null?x.sleep+'%':'?')+(x.sleepH?' ('+x.sleepH+' h, bed '+(x.bed||'?')+', wake '+(x.wake||'?')+')':'')+', day strain '+(x.strain!=null?x.strain:'?')+(x.resp?', breathing '+x.resp+'/min':'')+(x.dist!=null?', disturbances '+x.dist:'')+(x.eff?', efficiency '+x.eff+'%':'')+(x.spo2?', SpO2 '+x.spo2+'%':'')+(x.deep?', deep '+x.deep+' h':'')}).join('; ')||'none')+'.');
+    (S.events||[]).filter(function(ev){return ev.d>=addDays(from,-60)}).forEach(function(ev){var c=evCompare(ev);L.push('Recent change ('+ev.d+'): '+ev.t+'. Before vs since: '+(c.rows.map(function(r){return r.n+' '+r.a+' -> '+r.b}).join(', ')||'not enough data')+'.')});
     var gs=doneLogs().filter(function(x){return inR(logDate(x.l))}).sort(function(a,b){return a.l.t0-b.l.t0});
     L.push('Gym sessions in this period: '+(gs.map(function(x){var l=x.l,D=dayById(x.id),fb=l.fb||{},ss=l.sets||[],top=ss.filter(function(s){return s.b==='main'&&s.i>=3}).pop();
       return logDate(l)+' '+(D?D.title:x.id)+' '+hhmmss(l.t0)+'-'+hhmmss(endOf(l))+' ('+(l.mins||'?')+' min): '+logSummaryLines(x.k,l).map(strip).join('; ')+
@@ -2118,7 +2155,7 @@ var INFO={
     return ['You are an experienced strength and conditioning coach writing an in-depth training report for one athlete. Be specific to the numbers given, direct, and practical.']
       .concat(base).concat(extra).concat([
       'Cardio detail (most recent last): '+(cd.join('; ')||'none')+'. Max heart rate: '+mx+' bpm. Zone 2 target 130-145 bpm. Intervals target 85-95% of max heart rate in the hard minutes.',
-      'Write the report as JSON only, with no text before or after it, in this shape. Use these section headings, in this order: '+secs+'. Leave out a section only if there is truly nothing to say.',
+      'Write the report as JSON only, with no text before or after it, in this shape. Use these section headings, in this order: '+secs+'. Leave out a section only if there is truly nothing to say. The Summary must be a plain-English overview of performance and the key data for the whole period in 120-200 words: what went well, what did not, the most important numbers, and the one thing to focus on next.',
       '{"title": "short headline", "sections": [{"h": "Summary", "t": "..."}, {"h": "Strength", "t": "..."}, {"h": "Balance and weak points", "t": "..."}, {"h": "Conditioning", "t": "..."}, {"h": "Recovery and load", "t": "..."}, {"h": "Joints and pain", "t": "..."}, {"h": "Next week", "t": "..."}], "changes": ["up to 6 concrete changes that fit inside 45-minute sessions"], "tm": {"squat": number}, "subs": {"<exercise id>": {"n": "name", "sets": 3, "reps": "8-12", "cue": "how to do it", "why": "why it avoids the pain"}}, "targets": {"zone2": {"w": number, "lvl": number, "speed": number, "incline": number, "hrLo": 130, "hrHi": 145, "note": "what to change next time"}, "int": {...}, "sprint": {...}}}',
       'Rules: plain text inside strings (no markdown, no asterisks). Each section 60-160 words. Use "tm" only for lifts whose training max should change now, rounded to '+inc()+' kg and within 15% of the current value. Use "subs" only for exercises with a pain note. In "targets", give next-session targets for each cardio type with data: if average heart rate was below the target band, raise resistance, watts, speed or incline by about 5%; if it was inside the band, raise by about 2-3%; if above, hold or lower by about 5%. Only include fields that suit the machine used (watts or level for bikes and rowers, speed and incline for treadmills). Do not diagnose injuries; recommend a physio for repeated pain of 4 or more.'
     ]).join('\n');
@@ -2151,8 +2188,10 @@ var INFO={
       h+='<div class="card rep"'+(r.seen?'':' style="border-color:var(--sig)"')+'><button type="button" class="rh" data-act="ropen" data-id="'+r.id+'" style="border:0;background:none;padding:0;width:100%;text-align:left;color:inherit" aria-expanded="'+open+'"><span><span class="note" style="margin:0">'+new Date(r.t).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'})+'</span><h3>'+esc(r.title)+'</h3></span><span class="kind'+(r.kind==='weekly'?' weekly':'')+'">'+(r.kind==='weekly'?'Weekly':'On demand')+'</span></button>';
       if(!open){h+='<div class="note">'+esc(first)+(first.length>=140?'…':'')+'</div></div>';return}
       if(r.range)h+='<div class="note" style="margin:6px 0 0">'+esc(r.range)+'</div>';
+      var secs2=r.sections.slice(),s0=secs2.length&&/summary/i.test(secs2[0].h)?secs2.shift():null;
+      if(s0)h+='<div class="rsec"><h4>'+esc(s0.h)+'</h4><p>'+esc(s0.t)+'</p></div>';
       h+=cardHtml(r.card);
-      if(r.sections.length)r.sections.forEach(function(s){h+='<div class="rsec"><h4>'+esc(s.h)+'</h4><p>'+esc(s.t)+'</p></div>'});
+      if(secs2.length)secs2.forEach(function(s){h+='<div class="rsec"><h4>'+esc(s.h)+'</h4><p>'+esc(s.t)+'</p></div>'});
       else if(r.text)h+='<div class="rsec"><p>'+esc(r.text)+'</p></div>';
       if(r.changes.length)h+='<div class="rsec"><h4>Changes to make</h4><ul class="dl">'+r.changes.map(function(c){return '<li>'+esc(c)+'</li>'}).join('')+'</ul></div>';
       var tmK=Object.keys(r.tm||{}).filter(function(k){var v=+r.tm[k],c=+S.tm[k];return v>0&&c&&Math.abs(v-c)/c<=0.15&&Math.abs(v-c)>0.01||r.applied['tm-'+k]});
@@ -2176,6 +2215,7 @@ var INFO={
       '<label class="f">Pull-ups<input type="number" inputmode="numeric" data-pu="1" value="'+esc(S.pu)+'" placeholder="best"></label></div>'+
       '<div style="margin-top:10px"><button class="btn w" type="button" data-act="bwlog">Log today’s bodyweight</button></div><div class="note">'+trend+(whCfg().refresh?' · Bodyweight also syncs from WHOOP.':'')+'</div>'+
       (S.bw.length>=2?line(S.bw.slice(-20).map(function(x){return +x.w}),null,'kg','Bodyweight over time'):'')+'</div>';
+    h+='<h2>Health and life changes</h2><div class="card">'+eventsCard()+'</div>';
     h+='<h2>Rehab</h2><div class="stack">'+rehabCard()+'</div>';
     h+='<h2>Muscle growth</h2><div class="card">'+growthCard()+'</div><h2>Measurements</h2><div class="card">'+measCard()+'</div>';
     if(S.wh&&S.wh.filter(function(x){return x.rec!=null}).length>=2){var rs=S.wh.filter(function(x){return x.rec!=null}).slice(-21);
@@ -2240,6 +2280,7 @@ var INFO={
         return logDate(x.l)+' '+x.id+': '+ss.length+' sets, avg '+fmtSec(avg(ss.map(function(s){return s.e-s.s})))+' per set'+(ss.some(function(s){return s.est})?' (estimated)':'')+(t?', top set '+t.w+'x'+t.r+(t.max?' peak HR '+t.max+(t.rec!=null?' drop '+t.rec+' in 60s':''):''):'')+(x.l.hrSum?', session HR avg '+x.l.hrSum.avg+' max '+x.l.hrSum.max:'')+(x.l.wh&&x.l.wh.z?', WHOOP zones min '+x.l.wh.z.join('/'):'')}).join('; ')+'.');
       var hi=hrInsights();if(hi.length)lines.push('Notable heart-rate and effort changes: '+hi.join(' ')+' Report on these where they matter.');})();
     if((S.issues||[]).length)lines.push('Pain being addressed (one rehab drill per joint, rated weekly on the linked movements): '+(S.issues||[]).filter(function(is){return is.active}).map(function(is){var wa=weekAvgs(is),dr=issueDrill(is);return is.part+' since '+is.start+', drill '+(dr?EX[dr].n+' level '+((is.lvl||0)+1):'none')+', weekly pain '+wa.map(function(x){return x.v}).join(' > ')}).join('; ')+'.');
+    (S.events||[]).forEach(function(ev){var c=evCompare(ev);lines.push('Health or life change on '+ev.d+': '+ev.t+'. Averages before ('+c.npre+' days) vs since ('+c.npost+' days): '+(c.rows.map(function(r){return r.n+' '+r.a+' -> '+r.b}).join(', ')||'not enough WHOOP data yet')+(c.energy?'; session energy rating (1-3) '+(c.energy.a!=null?c.energy.a+' -> ':'')+c.energy.b:'')+'. Comment on whether the data supports what the athlete has noticed, and what it means for training.')});
     lines.push('The app\'s own rule-based flags: '+(A.findings.map(function(f){return f.title}).join('; ')||'none')+'.');
     lines.push('Tasks: 1) Name the two or three most important inefficiencies or imbalances, using height, bodyweight and recovery as context where they matter. 2) For each, give one specific fix that fits inside 45 minutes: say what to swap or trim, not only what to add. 3) Say whether any training max should change now, and why. 4) For any pain note, suggest one alternative exercise that avoids the described painful movement but trains the same area. 5) One recovery or load-management note given the mat training. Do not diagnose injuries; if any pain flag is 4 or higher, tell them to see a physio if it repeats. Be direct and specific to these numbers.');
     return lines.join('\n');
@@ -2482,6 +2523,8 @@ var INFO={
     else if(a==='hrcon'){hrConnect();return}
     else if(a==='irate'){var is3=(S.issues||[]).filter(function(x){return x.id===d.iss})[0];if(is3){var k3=lkey(U.day);is3.ratings=is3.ratings.filter(function(r){return !(r.k===k3&&r.ex===d.ex&&!r.base)});is3.ratings.push({d:today(),v:+d.v,ex:d.ex,k:k3});rehabProgress(is3)}}
     else if(a==='iresolve'||a==='istop'){var is4=(S.issues||[]).filter(function(x){return x.id===d.id})[0];if(is4){is4.active=false;if(a==='iresolve')is4.resolved=today();else is4.stopped=today()}}
+    else if(a==='evadd'){var et=$('evt').value.trim(),ed=$('evd').value;if(et&&ed){S.events=S.events||[];S.events.push({id:'e'+Date.now().toString(36),d:ed,t:et.slice(0,200)})}}
+    else if(a==='evdel'){if(U.evdel===d.id){S.events=(S.events||[]).filter(function(x){return x.id!==d.id});U.evdel=null}else U.evdel=d.id}
     else if(a==='goalset'){var gv=parseFloat($('goal-'+d.k).value);S.goals=S.goals||{};if(gv>0){var gs=goalSeries(d.k);S.goals[d.k]={to:gv,from:gs.length?gs[gs.length-1].v:null,set:today()}}else delete S.goals[d.k]}
     else if(a==='fbapply'){var ff=(A.findings||[]).filter(function(x){return x.id===d.id})[0];
       if(ff&&ff.act){if(ff.act.t==='tm'){S.undo={k:ff.act.k,from:S.tm[ff.act.k]};S.tm[ff.act.k]=ff.act.v;U.undoShow=true}else S.heavy=!!ff.act.v;S.dismiss[ff.id]=true}}
