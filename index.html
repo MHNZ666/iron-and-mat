@@ -309,6 +309,15 @@ var Prog=(function(){
     trapdl:{n:'Trap bar deadlift',main:'same',sub:true,cue:'Same weights as programmed. A more upright pull that is easier on the lower back.'},
     rackpl:{n:'Block pull, bar below the knee',main:'same',sub:true,cue:'Same weights as programmed. A shorter range for a sore lower back.'},
     bbfloor:{n:'Barbell floor press',main:'same',sub:true,cue:'Same weights as programmed. The floor stops the elbows before the shoulder is stretched.'},
+    // Hypertrophy for arms, chest and shoulders (moderate reps, close to failure, progressed by the top of the rep range)
+    latraise:{n:'Dumbbell lateral raise',sets:3,reps:'12–15',rest:30,load:true,hyp:true,eq:'db',cue:'Slight bend in the elbows. Raise out to the sides to shoulder height, leading with the elbows. Lower for two seconds.'},
+    hammer:{n:'Hammer curl',sets:3,reps:'10–12',rest:30,load:true,hyp:true,eq:'db',cue:'Palms facing each other, elbows pinned to your sides. No swinging. Builds the biceps, forearms and grip.'},
+    pushdown:{n:'Cable triceps pushdown, rope',sets:3,reps:'12–15',rest:30,load:true,hyp:true,eq:'stack',cue:'Elbows stay at your sides. Push down and spread the rope at the bottom. Control it back up.'},
+    inclcurl:{n:'Incline dumbbell curl',sets:3,reps:'10–12',rest:30,load:true,hyp:true,eq:'db',cue:'Bench at about 60 degrees, arms hanging behind you. Curl without the elbows moving forward. Slow on the way down.'},
+    inclpress:{n:'Incline dumbbell press',sets:3,reps:'10–12',rest:45,load:true,hyp:true,eq:'db',cue:'Bench at about 30 degrees. Lower the dumbbells to the upper chest with the elbows slightly tucked, then press up and in.'},
+    cablelat:{n:'Cable lateral raise',sets:3,reps:'12–15',rest:30,load:true,hyp:true,sub:true,eq:'stack',cue:'Cable from the low pulley across your body. Raise to shoulder height. Kinder to sore shoulders than dumbbells.'},
+    cablecurl:{n:'Cable curl',sets:3,reps:'10–12',rest:30,load:true,hyp:true,sub:true,eq:'stack',cue:'Elbows by your sides, curl up and squeeze. Steady tension through the whole range.'},
+    ohext:{n:'Overhead cable triceps extension',sets:3,reps:'12–15',rest:30,load:true,hyp:true,sub:true,eq:'stack',cue:'Facing away from the cable, elbows pointing up. Straighten the arms overhead and stretch back slowly.'},
     // Rehab and mobility drills, added when a pain is marked "address this pain" (one per joint at a time)
     m_stick:{n:'Stick pass-through',sets:2,reps:'10',rest:0,mob:true,eq:'bw',cue:'Wide grip on a dowel or band. Lift it over your head and behind, then back, with straight arms. Narrow the grip a little each week.'},
     m_bander:{n:'Band external rotation stretch',sets:2,reps:'30 s/side',rest:0,mob:true,eq:'band',cue:'Elbow bent at 90 degrees, band pulling the hand inward. Let the shoulder rotate out to a gentle stretch and breathe.'},
@@ -341,7 +350,7 @@ var Prog=(function(){
     dbbench:{n:'Dumbbell bench press',sets:3,reps:'8',rest:75,load:true,eq:'db',cue:'Bench assistance added by your review. Full stretch at the bottom, controlled.'}
   };
   // Where each add-on goes and what it costs in minutes. At most one per day.
-  var ALTS={sled:['bikewu'],tib:['bandtib'],calf:['seatcalf'],patrick:['spanish','tke'],split:['stepup','spanish','slbridge'],hlr:['deadbug','revcrunch'],
+  var ALTS={latraise:['cablelat'],hammer:['cablecurl'],inclcurl:['cablecurl'],pushdown:['ohext'],inclpress:['pushup','landpress'],sled:['bikewu'],tib:['bandtib'],calf:['seatcalf'],patrick:['spanish','tke'],split:['stepup','spanish','slbridge'],hlr:['deadbug','revcrunch'],
     rdl:['backext','hamcurl'],throw:['pallof'],slam:['pallof'],row:['cablerow'],pullover:['sapulldown'],powell:['bander','facepull'],er:['bander','facepull'],
     swing:['kbdl','backext'],thrust:['bridge','backext'],carry:['farmer','pallof'],sidebend:['pallof','sideplank'],floor:['pushup','landpress'],
     sprawl:['inclsprawl','pallof'],hang:['supphang'],elephant:['hamfloss'],couch:['hkhip'],pullup:['pulldown'],neck:['neckiso'],
@@ -365,13 +374,15 @@ var Prog=(function(){
       {t:'grp',label:'Knee primer',m:3,ex:['patrick']},
       {t:'main',label:'Squat',m:16},
       {t:'grp',label:'Superset',ss:true,m:9,ex:['split','hlr']},
-      {t:'grp',label:'Hamstrings',m:5,ex:['rdl']}],extras:[]},
+      {t:'grp',label:'Hamstrings',m:5,ex:['rdl']},
+      {t:'grp',label:'Arms and shoulders',ss:true,hyp:true,m:6,ex:['latraise','hammer']}],extras:[]},
     {id:'d2',dow:'Tue',title:'Bench and pulling',lift:'bench',blocks:[
       {t:'grp',label:'Warm-up',m:5,ex:['sled','tib','calf']},
       {t:'grp',label:'Power',m:6,ex:['throw']},
       {t:'main',label:'Bench press',m:16},
       {t:'grp',label:'Upper back',m:7,ex:['row']},
-      {t:'grp',label:'Superset',ss:true,m:6,ex:['pullover','powell']}],extras:['pullup']},
+      {t:'grp',label:'Superset',ss:true,m:6,ex:['pullover','powell']},
+      {t:'grp',label:'Triceps',hyp:true,m:3,ex:['pushdown']}],extras:['pullup']},
     {id:'d3',dow:'Wed',title:'Aerobic base and mobility',lift:null,blocks:[
       {t:'cond',label:'Aerobic work',m:32},
       {t:'grp',label:'Mobility and decompression',m:10,ex:['hang','elephant','couch']}],extras:[]},
@@ -380,7 +391,8 @@ var Prog=(function(){
       {t:'grp',label:'Power',m:5,ex:['swing']},
       {t:'main',label:'Deadlift',m:16},
       {t:'grp',label:'Bridge',m:6,ex:['thrust']},
-      {t:'grp',label:'Superset',ss:true,m:6,ex:['carry','sidebend']}],extras:['neck']},
+      {t:'grp',label:'Superset',ss:true,m:6,ex:['carry','sidebend']},
+      {t:'grp',label:'Chest and arms',ss:true,hyp:true,m:6,ex:['inclpress','inclcurl']}],extras:['neck']},
     {id:'d5',dow:'Fri',title:'Press and sprints',lift:'press',blocks:[
       {t:'grp',label:'Warm-up',m:5,ex:['sled','tib','calf']},
       {t:'main',label:'Overhead press',m:16},
@@ -396,7 +408,7 @@ var Prog=(function(){
     if(b.t==='cond')return condMin(week);
     return b.m;
   }
-  function dayMin(d,cycle,week,heavy,addon){var s=0;d.blocks.forEach(function(b){s+=blockMin(b,cycle,week,heavy)});if(addon&&ADD[addon]&&ADD[addon].d===d.id)s+=ADD[addon].m;return s}
+  function dayMin(d,cycle,week,heavy,addon){var s=0,on=addon&&ADD[addon]&&ADD[addon].d===d.id;d.blocks.forEach(function(b){var m=blockMin(b,cycle,week,heavy);s+=b.hyp&&on?0:m});if(addon&&ADD[addon]&&ADD[addon].d===d.id)s+=ADD[addon].m;return s}
   function sets(ex,heavy){return heavy&&!ex.extra&&ex.sets>1&&ex.rest>0?ex.sets-1:ex.sets}
   function phase(cycle){return cycle>=3?'push':cycle===2?'build':'learn'}
   return {EX:EX,ALTS:ALTS,MOB:MOB,mobLadder:mobLadder,ADD:ADD,DAYS:DAYS,rounds:rounds,condMode:condMode,condMin:condMin,blockMin:blockMin,dayMin:dayMin,sets:sets,phase:phase};
@@ -565,6 +577,10 @@ var Anim=(function(){
   function P(base,over){var o={};Object.keys(base).forEach(function(k){o[k]=base[k]});Object.keys(over||{}).forEach(function(k){o[k]=over[k]});return o}
   var BENCH={r:[44,124,92,8]},BENCHLEG={r:[86,132,6,58]},BOX={r:[118,170,56,20]},WALL={r:[30,40,8,150]};
   var POSES={
+    curl:[P(STAND,{a1:0,a2:0,wt:'db',two:true}),P(STAND,{a1:8,a2:155,wt:'db',two:true})],
+    latraise:[P(STAND,{a1:5,a2:12,wt:'db',two:true}),P(STAND,{a1:85,a2:95,wt:'db',two:true})],
+    pushdown:[P(STAND,{t:8,a1:12,a2:160,props:[{r:[124,20,3,60]}]}),P(STAND,{t:8,a1:12,a2:20,props:[{r:[124,20,3,60]}]})],
+    ohext:[P(STAND,{t:8,a1:170,a2:20}),P(STAND,{t:8,a1:170,a2:178})],
     squat:[P(STAND,{a1:-35,a2:-165,b1:-35,b2:-165,wt:'back'}),P(STAND,{t:38,a1:-10,a2:-150,b1:-10,b2:-150,l1:88,l2:-28,m1:88,m2:-28,wt:'back'})],
     boxsquat:[P(STAND,{a1:-35,a2:-165,wt:'back',props:[{r:[58,138,30,52]}]}),P(STAND,{t:30,a1:-10,a2:-150,l1:82,l2:-8,m1:82,m2:-8,wt:'back',props:[{r:[58,138,30,52]}]})],
     frontsquat:[P(STAND,{a1:70,a2:200,b1:70,b2:200,wt:'front',f:-12,lift:4,props:[{r:[100,184,30,6]}]}),P(STAND,{t:18,a1:85,a2:210,b1:85,b2:210,l1:100,l2:-38,m1:100,m2:-38,f:-12,lift:4,wt:'front',props:[{r:[100,184,30,6]}]})],
@@ -642,6 +658,14 @@ var Anim=(function(){
 <script id="info">
 /*INFO*/
 var INFO={
+  latraise:{a:'latraise',b:'Builds the side of the shoulder, the part pressing barely reaches, for wider, rounder shoulders.',c:['Light weight, strict form.','Lead with the elbows.','Stop at shoulder height.','Two seconds down.']},
+  hammer:{a:'curl',b:'Builds the biceps and the forearm muscle beside it, and adds grip strength for gripping the gi.',c:['Elbows pinned.','No swinging.','Squeeze at the top.']},
+  pushdown:{a:'pushdown',b:'Isolates the triceps, which make up most of the upper arm.',c:['Elbows stay at your sides.','Spread the rope at the bottom.','Slow on the way up.']},
+  inclcurl:{a:'curl',b:'Works the biceps from a stretched position, which is strongly linked to growth.',c:['Arms hang behind your body.','Elbows stay back.','Slow lowering.']},
+  inclpress:{a:'dbbench',b:'Builds the upper chest and front shoulders at a moderate weight, adding size on top of your heavy bench.',c:['Bench at about 30 degrees.','Elbows slightly tucked.','Press up and slightly in.','Stop one or two reps short of failure.']},
+  cablelat:{a:'latraise',b:'Side-shoulder work with even tension, often easier on a sore shoulder.',c:['Cable from low and across the body.','Raise to shoulder height.','Control the return.']},
+  cablecurl:{a:'curl',b:'Biceps work with steady tension, easier on sore elbows or wrists.',c:['Elbows by your sides.','Squeeze at the top.','Slow down.']},
+  ohext:{a:'ohext',b:'Trains the long head of the triceps in a stretched position, the biggest part of the arm.',c:['Elbows point up.','Stretch slowly behind the head.','Elbows stay narrow.']},
   m_stick:{a:'press',b:'Restores the overhead and behind-the-back range the shoulders need to reach a squat grip.',c:['Start with a wide grip.','Straight arms, slow and smooth.','Bring the grip in a little as it gets easy.']},
   m_bander:{a:'er',b:'Opens the external rotation the shoulder needs to hold a low-bar or back-squat grip.',c:['Elbow bent and close to the body.','Let the band pull gently.','Breathe and relax into it.']},
   m_rack:{a:'squat',b:'Practises the exact squat-grip position under no load, so the range carries over to your squat.',c:['Elbows under the bar.','Chest up, no shrugging.','Inch the hands closer over the weeks.']},
@@ -740,7 +764,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='4.8 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='4.9 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -754,7 +778,7 @@ var INFO={
     ex:{squat:{w:100,r:5},bench:{w:70,r:5},dead:{w:140,r:5},press:{w:47.5,r:5}},
     tm:{},cycle:1,week:0,logs:{},hist:[],loads:{},alts:{},pain:[],
     h:'',bw:[],pu:'',loadHist:{},dismiss:{},claude:null,reviewDue:false,u:0,
-    step:5,subs:{},custom:{},cardio:{},lnote:{},undo:null,wh:[],whoop:null,whw:[],extra:[],reports:[],ctarget:{},rw:{lvl:1,ok:0,hist:[]}}}
+    step:5,subs:{},custom:{},cardio:{},lnote:{},undo:null,wh:[],whoop:null,whw:[],extra:[],reports:[],ctarget:{},rw:{lvl:1,ok:0,hist:[]},meas:[]}}
   /* ---------- data safety: nothing is overwritten without a copy being kept first ---------- */
   var SNAPKEY='iron-mat-snapshots',Safe={blocked:false,warn:''};
   function nLogs(o){var n=0;Object.keys(o&&o.logs||{}).forEach(function(k){var l=o.logs[k];if(l&&(l.done||l.t0))n++});return n}
@@ -930,11 +954,48 @@ var INFO={
         else out.push(b);
         if(ad){var f=A.findings.filter(function(x){return x.addon===ad&&x.placed===d.id})[0];
           out.push({t:'grp',label:'Added by your review',m:Prog.ADD[ad].m,ex:[ad],addon:true,why:f?f.title:''})}
-      }else out.push(b);
+      }else if(b.hyp&&ad){/* moved to the optional extras on a day your review adds a lift, to keep within 45 minutes */}
+      else out.push(b);
     });
     return out;
   }
-  function extrasOf(d){var ad=addonFor(d.id);return (d.extras||[]).filter(function(x){return x!==ad})}
+  function nSets(e,dayId){return Prog.sets(e,S.heavy)}
+  /* ---------- muscle growth: weekly hard sets per area, counting indirect work as half ---------- */
+  var AREAS=[{k:'chest',n:'Chest'},{k:'sh',n:'Shoulders'},{k:'bi',n:'Biceps'},{k:'tri',n:'Triceps'}];
+  var VOL={'main-bench':{chest:1,tri:.5,sh:.5},'main-press':{sh:1,tri:.5},floor:{chest:1,tri:.5},inclpress:{chest:1,sh:.5,tri:.5},dbbench:{chest:1,tri:.5},dbbenchn:{chest:1,tri:.5},pushup:{chest:1,tri:.5},pullover:{chest:.5},
+    latraise:{sh:1},cablelat:{sh:1},powell:{sh:1},facepull:{sh:1},er:{sh:.5},dbpress:{sh:1,tri:.5},landpress:{sh:1,tri:.5},
+    hammer:{bi:1},inclcurl:{bi:1},cablecurl:{bi:1},row:{bi:.5},cablerow:{bi:.5},pullup:{bi:.5},pulldown:{bi:.5},pushdown:{tri:1},ohext:{tri:1}};
+  function volWeek(c,w){
+    // sets you ticked that week, and the sets the plan holds
+    var done={},plan={};AREAS.forEach(function(a){done[a.k]=0;plan[a.k]=0});
+    function add(o,id,n){var m=VOL[id];if(m)Object.keys(m).forEach(function(k){o[k]+=m[k]*n})}
+    DAYS.forEach(function(d){var lg=S.logs[c+'-'+w+'-'+d.id];
+      if(d.lift){add(plan,'main-'+d.lift,3);if(lg){var k=0;for(var i=3;i<6;i++)if(mSet(lg,d.lift,i).done)k++;add(done,'main-'+d.lift,k)}}
+      d.blocks.forEach(function(b){(b.ex||[]).forEach(function(id){var rid=lg?exId(id):id;add(plan,id,Prog.sets(EX[id],S.heavy));if(lg)add(done,rid,(lg.ex[rid]||[]).filter(Boolean).length)})});
+      (d.extras||[]).forEach(function(id){if(lg)add(done,id,(lg.ex[id]||[]).filter(Boolean).length)});
+      if(lg)Object.keys(lg.ex||{}).forEach(function(id){if(VOL[id]&&!d.blocks.some(function(b){return (b.ex||[]).some(function(x){return exId(x)===id||x===id})})&&(d.extras||[]).indexOf(id)<0)add(done,id,(lg.ex[id]||[]).filter(Boolean).length)});
+    });
+    return {done:done,plan:plan};
+  }
+  function measCard(){
+    var M=S.meas||[],last=M[M.length-1]||{},first=M[0]||{};
+    var f=[['arm','Arm, flexed'],['chest','Chest'],['sh','Shoulders'],['waist','Waist']];
+    var h='<div class="note" style="margin:0">Measure every 2 to 4 weeks, same time of day, before training. Growth shows here and in your reports.</div><div class="fields" style="grid-template-columns:1fr 1fr;margin-top:10px">'+
+      f.map(function(x){return '<label class="f">'+x[1]+' (cm)<input type="number" inputmode="decimal" id="ms-'+x[0]+'" value="'+esc(last[x[0]]||'')+'"></label>'}).join('')+'</div>'+
+      '<div style="margin-top:10px"><button class="btn w" type="button" data-act="mslog">Log measurements</button></div>';
+    if(M.length>=2)h+='<div class="note">Since '+esc(first.d)+': '+f.map(function(x){var a=+first[x[0]],b=+last[x[0]];return a&&b?x[1]+' '+(b-a>=0?'+':'')+(Math.round((b-a)*10)/10)+' cm':''}).filter(Boolean).join(' · ')+'</div>';
+    var arms=M.filter(function(x){return +x.arm>0});if(arms.length>=2)h+=line(arms.slice(-12).map(function(x){return +x.arm}),null,'cm','Arm over time');
+    return h;
+  }
+  function growthCard(){
+    var v=volWeek(S.cycle,S.week),h='<div class="note" style="margin:0">Hard sets this week, direct work counted fully and presses or rows as half. Around 10 or more a week per muscle supports growth.</div><div style="margin-top:10px">';
+    AREAS.forEach(function(a){var d=Math.round(v.done[a.k]*2)/2,p=Math.round(v.plan[a.k]*2)/2,pc=p?Math.min(100,Math.round(d/p*100)):0;
+      h+='<div class="row" style="margin-top:6px"><span style="width:90px">'+a.n+'</span><span class="budget" style="flex:1;margin:0 10px" aria-hidden="true"><i style="width:'+pc+'%"></i></span><span style="width:70px;text-align:right">'+d+' / '+p+'</span></div>'});
+    return h+'</div>';
+  }
+  function extrasOf(d){var ad=addonFor(d.id),hy=[];
+    if(ad)d.blocks.forEach(function(b){if(b.hyp)hy=hy.concat(b.ex)});
+    return hy.concat((d.extras||[]).filter(function(x){return x!==ad}))}
   function dayMin(d){return Prog.dayMin(d,S.cycle,S.week,S.heavy,addonFor(d.id))}
   /* ---------- background time tracking and finish estimate ---------- */
   function stamp(lg,b){lg.tk=lg.tk||[];lg.tk.push({b:b,t:Date.now()});if(lg.tk.length>300)lg.tk=lg.tk.slice(-300)}
@@ -943,7 +1004,7 @@ var INFO={
     var m=b.t==='sprint'||b.t==='cond'?Prog.blockMin(b,S.cycle,S.week,S.heavy):b.m||0,n=0,k=0,ids=[];
     if(b.t==='main'){n=6;for(var i=0;i<6;i++)if(mSet(lg,d.lift,i).done)k++;ids=['main']}
     else if(b.t==='cond'||b.t==='sprint'){var key=b.t==='cond'?'cond':'sprint';n=1;k=(lg.ex[key]||[])[0]?1:0;ids=[key]}
-    else (b.ex||[]).forEach(function(id){var rid=exId(id),e=EX[rid];if(!e)return;var s=Prog.sets(e,S.heavy);n+=s;
+    else (b.ex||[]).forEach(function(id){var rid=exId(id),e=EX[rid];if(!e)return;var s=nSets(e,d.id);n+=s;
       var a=lg.ex[rid]||[];for(var j=0;j<s;j++)if(a[j])k++;ids.push(rid)});
     return {label:b.label,m:m,n:n,k:k,f:n?Math.min(1,k/n):0,ids:ids};
   }
@@ -1156,7 +1217,7 @@ var INFO={
   /* ---------- accessory sets ---------- */
   function xSet(lg,rid,i){var e=EX[rid],v=(lg.xs[rid]||[])[i]||{},r=rng(e.reps);return {w:v.w!=null?v.w:(S.loads[rid]||''),r:v.r!=null?v.r:(r?r[0]:''),done:!!(lg.ex[rid]||[])[i]}}
   function exCard(id,lg,isAdd,mainKey){
-    var rid=exId(id),e=EX[rid],n=Prog.sets(e,S.heavy),key=mainKey||swapKey(id),swapped=!!S.subs[key]&&S.subs[key]===rid,r=rng(e.reps);
+    var rid=exId(id),e=EX[rid],n=nSets(e,U.day),key=mainKey||swapKey(id),swapped=!!S.subs[key]&&S.subs[key]===rid,r=rng(e.reps);
     var h='<div class="card ex'+(isAdd?' addon':'')+'"><div class="row"><span class="nm">'+esc(e.n)+'</span><span class="row" style="gap:8px"><span class="rx">'+n+' × '+esc(e.reps)+'</span>'+qBtn(rid)+'</span></div>';
     if(swapped)h+='<div class="note" style="color:var(--knee)">Swapped in for '+esc(mainKey?Rules.NAMES[mainKey.slice(5)]:EX[key]?EX[key].n:'')+'. <button type="button" class="linkb" data-act="swap" data-k="'+key+'">Change</button></div>';
     h+='<div class="note" style="margin-top:4px">'+esc(e.cue||'')+'</div>';
@@ -1179,7 +1240,7 @@ var INFO={
   }
   function progressAccessories(lg){
     Object.keys(lg.xs).forEach(function(rid){
-      var e=EX[rid];if(!e||!e.load)return;var r=rng(e.reps),n=Prog.sets(e,S.heavy),done=[],w=0;
+      var e=EX[rid];if(!e||!e.load)return;var r=rng(e.reps),n=nSets(e,U.day),done=[],w=0;
       for(var i=0;i<n;i++){var x=xSet(lg,rid,i);if(x.done&&num(x.w)!=null)done.push(x)}
       if(!done.length)return;
       w=num(done[done.length-1].w);S.loads[rid]=w;S.loadHist[rid]=S.loadHist[rid]||{};S.loadHist[rid][S.cycle]=w;
@@ -1387,7 +1448,7 @@ var INFO={
     L.push('Activity: '+(d.lift?'Weightlifting':'Cardio and mobility'));L.push('');
     function add(title,lines){n++;L.push(n+'. '+title);lines.forEach(function(x){L.push('   '+x)})}
     function exLines(rid){
-      var e=EX[rid],r=rng(e.reps),out=[],cnt=Prog.sets(e,S.heavy),k=0;
+      var e=EX[rid],r=rng(e.reps),out=[],cnt=nSets(e,d.id),k=0;
       if(e.load&&(e.eq==='db'))out.push('Weight convention: per hand');
       if(e.load&&e.eq==='db1')out.push('Weight convention: one dumbbell');
       for(var i=0;i<cnt;i++){var x=xSet(lg,rid,i);if(!x.done)continue;k++;
@@ -1465,7 +1526,7 @@ var INFO={
     var lg=getLog(d.id),tot=0,done=0;
     blocksOf(d).forEach(function(b){
       if(b.t==='main'){tot+=6;for(var i=0;i<6;i++)if(mSet(lg,d.lift,i).done)done++}
-      else if(b.t==='grp'){b.ex.forEach(function(id){var r=exId(id);tot+=Prog.sets(EX[r],S.heavy);done+=(lg.ex[r]||[]).filter(Boolean).length})}
+      else if(b.t==='grp'){b.ex.forEach(function(id){var r=exId(id);tot+=nSets(EX[r],d.id);done+=(lg.ex[r]||[]).filter(Boolean).length})}
       else{tot+=1;done+=(lg.ex[b.t]||[]).filter(Boolean).length}
     });
     return {tot:tot,done:done};
@@ -1702,6 +1763,7 @@ var INFO={
       '<label class="f">Pull-ups<input type="number" inputmode="numeric" data-pu="1" value="'+esc(S.pu)+'" placeholder="best"></label></div>'+
       '<div style="margin-top:10px"><button class="btn w" type="button" data-act="bwlog">Log today’s bodyweight</button></div><div class="note">'+trend+(whCfg().refresh?' · Bodyweight also syncs from WHOOP.':'')+'</div>'+
       (S.bw.length>=2?line(S.bw.slice(-20).map(function(x){return +x.w}),null,'kg','Bodyweight over time'):'')+'</div>';
+    h+='<h2>Muscle growth</h2><div class="card">'+growthCard()+'</div><h2>Measurements</h2><div class="card">'+measCard()+'</div>';
     if(S.wh&&S.wh.filter(function(x){return x.rec!=null}).length>=2){var rs=S.wh.filter(function(x){return x.rec!=null}).slice(-21);
       h+='<h2>WHOOP recovery</h2><div class="card">'+line(rs.map(function(x){return x.rec}),rs.map(function(x){return x.rec<34}),'%','Recovery over time')+'<div class="note">Red dots are low-recovery days.</div></div>'}
     var R=A.ratios,rel=A.rel;
@@ -1735,6 +1797,9 @@ var INFO={
     lines.push('You are a strength coach reviewing one lifter\'s training log. Reply in plain text only: no markdown, no asterisks, no tables, no headings with symbols. Use short labelled paragraphs. At most 260 words.');
     lines.push('Context: Brazilian jiu-jitsu athlete who also trains on the mat. Gym plan: 5 days, hard cap of 45 minutes each. Main lifts follow Wendler 5/3/1 (training max = 90% of estimated max). Cycle 1 is a calibration month: the starting numbers were deliberately pessimistic and the training max adjusts after each session. Weights round to '+inc()+' kg steps. Assistance focuses on knee health (knees-over-toes work), shoulder health, power and conditioning.');
     lines.push('Height: '+(S.h?S.h+' cm':'not given')+'. Bodyweight: '+(bwNow()?bwNow()+' kg':'not given')+(A.trend?' (change '+Math.round(A.trend.pct*1000)/10+'% over '+A.trend.days+' days)':'')+'. Best strict pull-ups: '+(S.pu!==''?S.pu:'not given')+'.');
+    (function(){var M=S.meas||[];if(M.length)lines.push('Measurements (cm): '+M.slice(-6).map(function(m){return m.d+' arm '+(m.arm||'-')+', chest '+(m.chest||'-')+', shoulders '+(m.sh||'-')+', waist '+(m.waist||'-')}).join('; ')+'.');
+      var pv=[];for(var b=1;b<=3;b++){var c=S.cycle,w=S.week-b;while(w<0){w+=4;c--}if(c<1)break;var v=volWeek(c,w);pv.push('cycle '+c+' week '+(w+1)+': '+AREAS.map(function(a){return a.n.toLowerCase()+' '+(Math.round(v.done[a.k]*2)/2)+'/'+(Math.round(v.plan[a.k]*2)/2)}).join(', '))}
+      if(pv.length)lines.push('Hypertrophy sets done/planned (direct = 1, presses and rows = 0.5): '+pv.join('; ')+'. Goal: steady growth in arms, chest and shoulders alongside strength.');})();
     lines.push('Cycle '+S.cycle+', week '+(S.week+1)+' of 4.');
     ['squat','bench','dead','press'].forEach(function(k){lines.push(Rules.NAMES[k]+': training max '+S.tm[k]+' kg, implied max '+Math.round(est[k])+(A.rel[k]?' ('+(Math.round(A.rel[k]*100)/100)+'x bodyweight)':'')+(mainSub(k)?' (currently swapped to '+EX[mainSub(k)].n+')':''))});
     lines.push('Squat/deadlift ratio '+(A.ratios.sqdl||0).toFixed(2)+'. Press/bench ratio '+(A.ratios.pb||0).toFixed(2)+'.');
@@ -1962,6 +2027,8 @@ var INFO={
     else if(a==='ptab'){U.pTab=d.k}
     else if(a==='ctab'){U.cTab=d.k}
     else if(a==='set'){S[d.p]=d.p==='small'?d.v==='1':d.p==='step'?+d.v:d.v}
+    else if(a==='mslog'){var mr={d:today()},any=false;['arm','chest','sh','waist'].forEach(function(k){var v=parseFloat($('ms-'+k).value);if(v>0){mr[k]=v;any=true}});
+      if(any){S.meas=S.meas||[];if(S.meas.length&&S.meas[S.meas.length-1].d===mr.d)S.meas[S.meas.length-1]=mr;else S.meas.push(mr)}}
     else if(a==='bwlog'){var w=parseFloat($('bwin').value);if(w>0){var t=today();if(S.bw.length&&S.bw[S.bw.length-1].d===t)S.bw[S.bw.length-1].w=w;else S.bw.push({d:t,w:w})}}
     else if(a==='dismiss'){S.dismiss[d.id]=true}
     else if(a==='undismiss'){delete S.dismiss[d.id]}
