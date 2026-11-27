@@ -764,7 +764,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='4.9 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='4.9.1 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -1444,7 +1444,14 @@ var INFO={
     var L=[],miss=[],t0=lg.t0||Date.now(),t1=endOf(lg)||t0,dt=new Date(t0),n=0;
     var ymd=dt.getFullYear()+'-'+('0'+(dt.getMonth()+1)).slice(-2)+'-'+('0'+dt.getDate()).slice(-2);
     L.push('Please attach these exercises to my recorded workout.');
-    L.push('Date: '+ymd);L.push('Time: '+hm(t0)+'–'+hm(t1));L.push('Timezone: '+tzName());
+    function hms(ts){var x=new Date(ts),h=x.getHours(),z=function(v){return ('0'+v).slice(-2)};return (h%12||12)+':'+z(x.getMinutes())+':'+z(x.getSeconds())+(h<12?'am':'pm')+' ('+z(h)+':'+z(x.getMinutes())+':'+z(x.getSeconds())+')'}
+    var secs=Math.max(0,Math.round((t1-t0)/1000));
+    L.push('Date: '+ymd);
+    L.push('Start: '+(lg.t0?hms(t0):'[start time]'));
+    L.push('Finish: '+(lg.t0&&lg.t1?hms(lg.t1):'[finish time]'));
+    if(lg.t0&&lg.t1)L.push('Duration: '+Math.floor(secs/60)+' min '+(secs%60)+' s');
+    L.push('Timezone: '+tzName());
+    if(!lg.t0)miss.push('start time (tap Start, or Edit times)');else if(!lg.t1)miss.push('finish time (tap Finish session)');
     L.push('Activity: '+(d.lift?'Weightlifting':'Cardio and mobility'));L.push('');
     function add(title,lines){n++;L.push(n+'. '+title);lines.forEach(function(x){L.push('   '+x)})}
     function exLines(rid){
