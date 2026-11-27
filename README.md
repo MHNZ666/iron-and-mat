@@ -30,3 +30,7 @@ The "Review my training" button needs a small server that holds your Anthropic A
 4. **In the app.** Settings → Claude review server: paste the worker address (`https://<name>.<you>.workers.dev`) and the same access code, then Save.
 
 Never put the API key in this repo or in the app. The repo is public.
+
+## WHOOP
+
+The server in `worker/worker.js` also holds the WHOOP client secret. Add `WHOOP_CLIENT_ID` (Text) and `WHOOP_CLIENT_SECRET` (Secret) in Cloudflare, then in the app: Settings → Your server and WHOOP → enter the access code → Connect WHOOP. The app shows recovery, HRV, sleep and strain on the Train screen, syncs bodyweight and height, and matches each session to the WHOOP workout it recorded.
