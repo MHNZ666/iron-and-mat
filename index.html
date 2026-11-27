@@ -767,7 +767,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='5.3 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='5.3.1 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -2222,7 +2222,7 @@ var INFO={
     var cd=Object.keys(S.cardio).map(function(k){var c=S.cardio[k];return c.d+' '+c.mode+(c.machine?' '+c.machine:'')+(c.min?' '+c.min+'min':'')+(c.dist?' '+c.dist+'km':'')+(c.w?' avg '+c.w+'W':'')+(c.lvl?' level '+c.lvl:'')+(c.speed?' '+c.speed+'km/h':'')+(c.incline?' incline '+c.incline+'%':'')+(c.hr?' avgHR '+c.hr:'')+(c.mhr?' maxHR '+c.mhr:'')}).slice(-12);
     var mx=S.whoop&&S.whoop.maxhr||190,pr=periodRange(per),prev=(S.reports||[]).slice().sort(function(a,b){return b.t-a.t})[0];
     var r5=readiness(),sc=scorecards(),lr=loadRatio(),sp=sleepPerf(),pt=painTimeline(),gl=GOALS.map(function(G){var s=goalStatus(G.k);return s&&s.cur!=null?G.n+' '+s.cur+' toward '+s.to+(G.u?' '+G.u:'')+' ('+s.pct+'%'+(s.rate!=null?', '+s.rate+' a week':'')+(s.eta?', projected '+s.eta:', not moving toward it')+')':null}).filter(Boolean);
-    var secs=per==='today'?'"Summary", "Sleep and recovery", "Readiness", "Today\'s training", "Body and weight", "Next 24 hours"':'"Summary", "Readiness", "Follow-up", "Strength", "Muscle growth", "Balance and weak points", "Conditioning", "Recovery and load", "Joints and pain", "Goals", "Next week"';
+    var secs=per==='today'?'"Summary", "Sleep and recovery", "Readiness", "Today\'s training", "Body, weight and health", "Next 24 hours"':'"Summary", "Readiness", "Follow-up", "Strength", "Muscle growth", "Balance and weak points", "Conditioning", "Recovery and load", "Health and bloodwork", "Joints and pain", "Goals", "Next week"';
     var extra=['REPORT PERIOD: '+pr.label+'. Report on what happened in this period only; use earlier data purely for comparison. '+(per==='today'?'Focus on last night\'s sleep, today\'s recovery and any exercise today. If there was no training today, say so and cover readiness for the next session.':''),
       'Data for this period:'].concat(periodData(pr.from,pr.to)).concat([
       'Readiness today: '+(r5?r5.score+'/100 ('+r5.label+'; '+r5.parts.map(function(x){return x.n+' '+Math.round(x.v)}).join(', ')+')':'no WHOOP recovery yet')+'.',
