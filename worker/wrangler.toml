@@ -1,0 +1,6 @@
+# Cloudflare deploys the Iron and Mat server from this folder.
+name = "iron-and-mat"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+# Keep the variables and secrets set in the Cloudflare dashboard.
+keep_vars = true
