@@ -146,6 +146,7 @@ svg text{fill:var(--dim);font:600 11px var(--body)}
 .pv{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:8px}
 .pv button{min-height:48px;border:1px solid var(--line);background:var(--panel2);border-radius:10px;font:700 18px var(--body)}
 .pv button[aria-pressed="true"]{background:var(--knee);color:var(--bg);border-color:var(--knee)}
+.st{width:100%;border-collapse:collapse;margin-top:8px;font:13px var(--body)}.st th,.st td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}.st th{color:var(--dim);font-weight:600}
 .pv.fb button{font:600 13px var(--body);min-height:44px;padding:4px}
 .pv.fb3{grid-template-columns:repeat(3,1fr)}
 .pv button.hi[aria-pressed="true"]{background:var(--sig);border-color:var(--sig)}
@@ -766,7 +767,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='4.9.2 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='4.10 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -814,7 +815,10 @@ var INFO={
   })();
   function mergeCustom(){Object.keys(S.custom||{}).forEach(function(k){EX[k]=S.custom[k]})}
   mergeCustom();
-  setTimeout(function(){migrateReports()},0);
+  setTimeout(function(){migrateReports();
+    // sessions finished before set timing existed get an even split of their time across the sets done
+    try{var ch=false;Object.keys(S.logs).forEach(function(k){var l=S.logs[k],D=dayById(k.split('-')[2]);if(l.done&&l.t0&&!l.sets&&D){buildSets(D,l);ch=true}});if(ch){save();V()}}catch(e){}
+    setTimeout(function(){try{whMatch()}catch(e){}},1500)},0);
   if(S.unit!=='kg')convert('kg');
   var U={view:Safe.blocked?'settings':S.onboarded?'today':'onboard',day:null,pTab:'squat',cTab:'zone2',msg:'',nc:{},bk:'',ask:false,lv:null,cl:null,copied:'',pf:null,sw:null,info:null,photo:{},cal:null,calM:null,xw:null,ropen:null,rbusy:false,rerr:''};
   var A=null;
@@ -1048,7 +1052,7 @@ var INFO={
     return hy.concat((d.extras||[]).filter(function(x){return x!==ad}))}
   function dayMin(d){return Prog.dayMin(d,S.cycle,S.week,S.heavy,addonFor(d.id))}
   /* ---------- background time tracking and finish estimate ---------- */
-  function stamp(lg,b){lg.tk=lg.tk||[];lg.tk.push({b:b,t:Date.now()});if(lg.tk.length>300)lg.tk=lg.tk.slice(-300)}
+  function stamp(lg,b,i){lg.tk=lg.tk||[];lg.tk.push({b:b,i:i,t:Date.now()});if(lg.tk.length>300)lg.tk=lg.tk.slice(-300)}
   function blockUnits(d,b,lg){
     // how much of a block is done, in ticked sets, and the block's planned minutes
     var m=b.t==='sprint'||b.t==='cond'?Prog.blockMin(b,S.cycle,S.week,S.heavy):b.m||0,n=0,k=0,ids=[];
@@ -1086,6 +1090,119 @@ var INFO={
       var end=Math.max.apply(null,ts),st=Math.min(prev,Math.min.apply(null,ts));out.push({label:x.label,plan:x.m,act:Math.max(0,Math.round((end-st)/60000))});prev=end});
     return out;
   }
+  /* ---------- set by set: start and finish of every set, heart rate where available ---------- */
+  function doneUnits(d,lg){
+    // every ticked set in session order, with what was lifted
+    var out=[];
+    blocksOf(d).concat([{t:'grp',ex:extrasOf(d)}]).forEach(function(b){
+      if(b.t==='main'){for(var i=0;i<6;i++){var s=mSet(lg,d.lift,i);if(s.done)out.push({b:'main',i:i,n:Rules.NAMES[d.lift]+(i<3?' warm-up':''),w:s.w,r:s.r})}}
+      else if(b.t==='cond'||b.t==='sprint'){var k=b.t==='cond'?'cond':'sprint';if((lg.ex[k]||[])[0])out.push({b:k,i:0,n:b.t==='cond'?'Cardio':'Bike sprints'})}
+      else (b.ex||[]).forEach(function(id){var rid=exId(id),e=EX[rid];if(!e)return;var a=lg.ex[rid]||[];
+        for(var j=0;j<nSets(e,d.id);j++)if(a[j]){var x=xSet(lg,rid,j);out.push({b:rid,i:j,n:e.n,w:e.load?x.w:'',r:x.r})}});
+    });
+    return out;
+  }
+  function setSlots(d,lg){
+    // sets ticked together share the time since the previous tick equally
+    if(!lg.t0)return [];
+    var units=doneUnits(d,lg),last={},est=false;
+    (lg.tk||[]).forEach(function(t){if(t.i!=null)last[t.b+'#'+t.i]=t.t});
+    var end=lg.t1||lg.tl||Date.now(),timed=[],untimed=[];
+    units.forEach(function(u){var t=last[u.b+'#'+u.i];if(t){u.t=t;timed.push(u)}else untimed.push(u)});
+    timed.sort(function(a,b){return a.t-b.t});
+    var groups=[],g=null;timed.forEach(function(u){if(g&&u.t-g.t<=25000){g.u.push(u);g.t=u.t}else{g={t:u.t,u:[u]};groups.push(g)}});
+    if(untimed.length){est=true;groups.push({t:end,u:untimed,est:true})}
+    var prev=lg.t0,out=[];
+    groups.forEach(function(gr){var len=Math.max(0,(gr.t-prev)/gr.u.length);
+      gr.u.forEach(function(u,j){out.push({n:u.n,b:u.b,i:u.i,w:u.w,r:u.r,s:Math.round(prev+j*len),e:Math.round(prev+(j+1)*len),batch:gr.u.length>1,est:!!gr.est})});prev=Math.max(prev,gr.t)});
+    return out;
+  }
+  function hrIn(lg,s,e){var a=(lg.hrs||[]).filter(function(x){var t=lg.t0+x[0]*1000;return t>=s&&t<=e}).map(function(x){return x[1]});
+    if(!a.length)return null;var mx=Math.max.apply(null,a);return {avg:Math.round(a.reduce(function(p,v){return p+v},0)/a.length),max:mx,min:Math.min.apply(null,a)}}
+  function hrRecovery(lg,s){
+    // how far heart rate falls in the 60 seconds after a set's peak
+    var pts=(lg.hrs||[]).map(function(x){return [lg.t0+x[0]*1000,x[1]]});if(pts.length<5)return null;
+    var w=pts.filter(function(x){return x[0]>=s.s&&x[0]<=s.e});if(!w.length)return null;
+    var pk=w.reduce(function(a,b){return b[1]>a[1]?b:a}),af=pts.filter(function(x){return x[0]>=pk[0]+50000&&x[0]<=pk[0]+70000});
+    return af.length?pk[1]-af[0][1]:null;
+  }
+  function buildSets(d,lg){
+    var sl=setSlots(d,lg),z=lg.t0;
+    lg.sets=sl.map(function(s){var h=hrIn(lg,s.s,s.e),o={n:s.n,b:s.b,i:s.i,w:s.w,r:s.r,s:Math.round((s.s-z)/1000),e:Math.round((s.e-z)/1000)};
+      if(s.batch)o.batch=1;if(s.est)o.est=1;if(h){o.avg=h.avg;o.max=h.max;o.min=h.min;var rc=hrRecovery(lg,s);if(rc!=null)o.rec=rc}return o});
+    if(lg.hrs&&lg.hrs.length){var all=lg.hrs.map(function(x){return x[1]});lg.hrSum={avg:Math.round(all.reduce(function(p,v){return p+v},0)/all.length),max:Math.max.apply(null,all),n:all.length}}
+    // keep raw heart rate for the last 12 sessions only, to save space; the per-set results stay forever
+    var withRaw=Object.keys(S.logs).filter(function(k){return S.logs[k].hrs&&S.logs[k].hrs.length}).sort(function(a,b){return (S.logs[a].t0||0)-(S.logs[b].t0||0)});
+    withRaw.slice(0,-12).forEach(function(k){delete S.logs[k].hrs});
+  }
+  function fmtSec(s){return Math.floor(s/60)+':'+('0'+Math.round(s%60)).slice(-2)}
+  function zonesLine(lg){var z=lg.wh&&lg.wh.z;if(!z)return '';var nm=['Rest','Z1','Z2','Z3','Z4','Z5'];return '<div class="note" style="margin:8px 0 0">WHOOP time in heart-rate zones: '+z.map(function(m,i){return m>=0.5?nm[i]+' '+Math.round(m)+' min':''}).filter(Boolean).join(' · ')+'</div>'}
+  function setsTable(lg){
+    var ss=lg.sets||[];if(!ss.length)return zonesLine(lg);
+    var any=ss.some(function(s){return s.max}),h='<details style="margin-top:10px"><summary class="note" style="margin:0;cursor:pointer">Set by set ('+ss.length+' sets'+(any?', with heart rate':'')+')</summary><div style="overflow-x:auto"><table class="st"><tr><th>Set</th><th>Start</th><th>Finish</th><th>Time</th>'+(any?'<th>Avg</th><th>Peak</th><th>Drop</th>':'')+'</tr>';
+    ss.forEach(function(s){h+='<tr><td>'+esc(s.n)+(s.w!==''&&s.w!=null?' '+esc(s.w)+'×'+esc(s.r):'')+(s.est?' *':s.batch?' †':'')+'</td><td>'+hhmmss(lg.t0+s.s*1000)+'</td><td>'+hhmmss(lg.t0+s.e*1000)+'</td><td>'+fmtSec(s.e-s.s)+'</td>'+
+      (any?'<td>'+(s.avg||'–')+'</td><td>'+(s.max||'–')+'</td><td>'+(s.rec!=null?'−'+s.rec:'–')+'</td>':'')+'</tr>'});
+    h+='</table></div><div class="note">Each time covers the set and the rest before it. † ticked together with other sets, so the time is shared equally.'+(ss.some(function(s){return s.est})?' * no tick times were recorded, so the session is spread evenly across these sets.':'')+(any?' Drop is how far your heart rate fell in the minute after the set’s peak.':'')+'</div></details>';
+    return zonesLine(lg)+h;
+  }
+  function hhmmss(ts){var x=new Date(ts),z=function(v){return ('0'+v).slice(-2)};return z(x.getHours())+':'+z(x.getMinutes())+':'+z(x.getSeconds())}
+
+  /* ---------- live heart rate from your WHOOP's heart-rate broadcast (Bluetooth) ---------- */
+  var HR={dev:null,on:false,bpm:null,last:0,msg:''};
+  function hrOk(){return !!(navigator.bluetooth&&navigator.bluetooth.requestDevice)}
+  function hrConnect(){
+    if(!hrOk()){HR.msg='This browser cannot connect to Bluetooth. Use Chrome on Android.';V();return}
+    var p=HR.dev?Promise.resolve(HR.dev):navigator.bluetooth.requestDevice({filters:[{services:['heart_rate']}]});
+    HR.msg='Connecting…';V();
+    p.then(function(dev){HR.dev=dev;dev.addEventListener('gattserverdisconnected',function(){HR.on=false;HR.msg='Heart rate disconnected. Reconnecting…';paintHr();setTimeout(function(){if(HR.dev&&!HR.on)hrConnect()},3000)});return dev.gatt.connect()})
+      .then(function(srv){return srv.getPrimaryService('heart_rate')}).then(function(s){return s.getCharacteristic('heart_rate_measurement')})
+      .then(function(c){c.addEventListener('characteristicvaluechanged',hrValue);return c.startNotifications()})
+      .then(function(){HR.on=true;HR.msg='';V()},function(e){HR.on=false;HR.msg=e&&e.name==='NotFoundError'?'No strap chosen. Turn on Heart Rate Broadcast in the WHOOP app first.':'Could not connect. Check Heart Rate Broadcast is on in the WHOOP app.';V()});
+  }
+  function hrValue(ev){
+    var v=ev.target.value,f=v.getUint8(0),bpm=f&1?v.getUint16(1,true):v.getUint8(1),now=Date.now();if(!bpm)return;HR.bpm=bpm;
+    var D=U.day&&dayById(U.day),lg=D&&S.logs[lkey(U.day)];
+    if(lg&&lg.t0&&!lg.done&&now-HR.last>=3000){HR.last=now;lg.hrs=lg.hrs||[];lg.hrs.push([Math.round((now-lg.t0)/1000),bpm]);if(lg.hrs.length%10===0)save()}
+    paintHr();
+  }
+  function paintHr(){var el=document.getElementById('hrnow');if(el)el.innerHTML=hrLine()}
+  function hrLine(){return HR.on?'<b style="color:var(--sig)">♥ '+(HR.bpm||'–')+' bpm</b> · recording each set':esc(HR.msg||'')}
+  function hrCard(lg){
+    if(lg.done)return '';
+    return '<div class="note" id="hrnow" aria-live="off" style="margin:8px 0 0">'+hrLine()+'</div>'+(HR.on?'':'<button class="btn s" type="button" data-act="hrcon" style="margin-top:8px">'+(hrOk()?'Connect WHOOP heart rate':'Live heart rate needs Chrome on Android')+'</button>');
+  }
+
+  /* ---------- heart rate and effort over time: only what is notable ---------- */
+  function hrInsights(){
+    var L=doneLogs().map(function(x){return {k:x.k,id:x.id,l:x.l,d:logDate(x.l)}}).sort(function(a,b){return a.l.t0-b.l.t0}),out=[];
+    // top sets of each main lift: weight against peak heart rate
+    ['squat','bench','dead','press'].forEach(function(k){
+      var D=DAYS.filter(function(x){return x.lift===k})[0],pts=[];
+      L.filter(function(x){return x.id===D.id}).forEach(function(x){var top=(x.l.sets||[]).filter(function(s){return s.b==='main'&&s.i>=3&&s.max});if(!top.length)return;
+        var t=top[top.length-1];pts.push({d:x.d,w:+t.w||0,r:+t.r||0,max:t.max,rec:avg(top.map(function(s){return s.rec}))})});
+      if(pts.length<4)return;var a=pts.slice(-6,-3),b=pts.slice(-3),wa=avg(a.map(function(p){return p.w})),wb=avg(b.map(function(p){return p.w})),ha=avg(a.map(function(p){return p.max})),hb=avg(b.map(function(p){return p.max}));
+      if(wb>=wa&&ha-hb>=5)out.push(Rules.NAMES[k]+': '+(wb>wa?'heavier':'the same')+' top sets at '+Math.round(ha-hb)+' bpm lower peak heart rate. Your work capacity is improving.');
+      if(wb<=wa&&hb-ha>=5)out.push(Rules.NAMES[k]+': peak heart rate on top sets is up '+Math.round(hb-ha)+' bpm without more weight. Possible fatigue; watch sleep and mat load.');
+      var ra=avg(a.map(function(p){return p.rec})),rb=avg(b.map(function(p){return p.rec}));
+      if(ra!=null&&rb!=null&&Math.abs(rb-ra)>=5)out.push(Rules.NAMES[k]+': heart rate now drops '+Math.round(rb)+' bpm in the minute after a set (was '+Math.round(ra)+'). '+(rb>ra?'Faster recovery between sets.':'Slower recovery between sets.'));
+    });
+    // pace: average time per set
+    var ps=L.filter(function(x){return x.l.sets&&x.l.sets.length&&!x.l.sets.some(function(s){return s.est})}).map(function(x){return avg(x.l.sets.map(function(s){return s.e-s.s}))});
+    if(ps.length>=6){var p1=avg(ps.slice(-6,-3)),p2=avg(ps.slice(-3));if(Math.abs(p2-p1)/p1>=0.15)out.push('Average time per set (with rest) is '+fmtSec(p2)+', '+(p2>p1?'up':'down')+' from '+fmtSec(p1)+'. '+(p2>p1?'Rests may be creeping longer.':'Sessions are getting tighter.'))}
+    // WHOOP strain per minute and average heart rate for gym sessions
+    var wh=L.filter(function(x){return x.l.wh&&x.l.mins});
+    if(wh.length>=6){var s1=avg(wh.slice(-6,-3).map(function(x){return x.l.wh.strain/x.l.mins})),s2=avg(wh.slice(-3).map(function(x){return x.l.wh.strain/x.l.mins}));
+      if(s1&&Math.abs(s2-s1)/s1>=0.1)out.push('WHOOP strain per minute in the gym is '+(s2>s1?'up':'down')+' '+Math.round(Math.abs(s2-s1)/s1*100)+'% on recent sessions.');
+      var a1=avg(wh.slice(-6,-3).map(function(x){return x.l.wh.avg})),a2=avg(wh.slice(-3).map(function(x){return x.l.wh.avg}));
+      if(a1&&Math.abs(a2-a1)>=5)out.push('Average heart rate across gym sessions is '+Math.round(a2)+' bpm, '+(a2>a1?'up':'down')+' from '+Math.round(a1)+'.')}
+    // resting heart rate and HRV: last 7 days against the 28 before
+    var W=(S.wh||[]).filter(function(x){return x.rhr||x.hrv});
+    if(W.length>=14){var r7=avg(W.slice(-7).map(function(x){return x.rhr})),r28=avg(W.slice(-35,-7).map(function(x){return x.rhr})),v7=avg(W.slice(-7).map(function(x){return x.hrv})),v28=avg(W.slice(-35,-7).map(function(x){return x.hrv}));
+      if(r7&&r28&&Math.abs(r7-r28)>=3)out.push('Resting heart rate this week averages '+Math.round(r7)+' bpm, '+(r7>r28?'up':'down')+' from '+Math.round(r28)+'. '+(r7>r28?'Often a sign of accumulated fatigue or illness.':'A good sign of improving fitness.'));
+      if(v7&&v28&&Math.abs(v7-v28)/v28>=0.1)out.push('HRV this week averages '+Math.round(v7)+' ms, '+(v7>v28?'up':'down')+' '+Math.round(Math.abs(v7-v28)/v28*100)+'% on the previous four weeks.')}
+    return out;
+  }
+  setInterval(function(){var D=U.day&&dayById(U.day),lg=D&&S.logs[lkey(U.day)];if(lg&&lg.hrs&&!lg.done&&HR.on)save()},30000);
   setInterval(function(){var el=document.getElementById('eta');if(!el||U.view!=='session')return;var D=dayById(U.day),lg=D&&S.logs[lkey(U.day)];if(!lg)return;el.innerHTML=etaText(D,lg);
     var so=document.getElementById('sofar');if(so&&lg.t0)so.textContent=Math.max(0,Math.round((Date.now()-lg.t0)/60000))},20000);
 
@@ -1475,14 +1592,15 @@ var INFO={
       S.whoop=o;WH.msg='';save();
     },function(e){WH.msg=e&&e.none?'':srvErr(e,'WHOOP')}).then(function(){WH.busy=false;V();whMatch()});
   }
+  function zones(sc){var z=sc&&sc.zone_durations||sc&&sc.zone_duration;if(!z)return null;return ['zone_zero_milli','zone_one_milli','zone_two_milli','zone_three_milli','zone_four_milli','zone_five_milli'].map(function(k){return Math.round((+z[k]||0)/6000)/10})}
   function whMatch(){
     if(!whCfg().refresh)return;
-    var keys=Object.keys(S.logs).filter(function(k){var l=S.logs[k];l.tl=endOf(l);return l.done&&l.t0&&!l.wh&&(!l.whTry||Date.now()-l.whTry>4*60000)&&Date.now()-l.t0<7*864e5}).slice(-3);
+    var keys=Object.keys(S.logs).filter(function(k){var l=S.logs[k];l.tl=endOf(l);return l.done&&l.t0&&(!l.wh||l.wh.z===undefined)&&(!l.whTry||Date.now()-l.whTry>4*60000)&&Date.now()-l.t0<7*864e5}).slice(-3);
     keys.forEach(function(k){var l=S.logs[k];l.whTry=Date.now();
       var a=new Date(l.t0-30*60000).toISOString(),b=new Date((l.tl||l.t0)+60*60000).toISOString();
       whGet('/v2/activity/workout?start='+encodeURIComponent(a)+'&end='+encodeURIComponent(b)+'&limit=5').then(function(j){
         var best=null;(j&&j.records||[]).forEach(function(w){var s=new Date(w.start).getTime(),e=new Date(w.end).getTime(),ov=Math.min(e,l.tl||l.t0)-Math.max(s,l.t0);if(ov>0&&(!best||ov>best.ov))best={ov:ov,w:w}});
-        if(best&&best.w.score){var sc=best.w.score;l.wh={strain:Math.round(sc.strain*10)/10,avg:sc.average_heart_rate,max:sc.max_heart_rate,kj:Math.round(sc.kilojoule||0),start:best.w.start,end:best.w.end};save();V()}
+        if(best&&best.w.score){var sc=best.w.score;l.wh={strain:Math.round(sc.strain*10)/10,avg:sc.average_heart_rate,max:sc.max_heart_rate,kj:Math.round(sc.kilojoule||0),start:best.w.start,end:best.w.end,z:zones(sc)};save();V()}
       }).catch(function(){})});
   }
   function recCol(v){return v>=67?'var(--ok)':v>=34?'var(--knee)':'var(--sig)'}
@@ -1677,11 +1795,11 @@ var INFO={
     if(!lg.t0)return '<div class="card clock" style="margin-top:14px"><div class="row"><span><b>Not started</b><br><span class="note" style="margin:0">Tap Start when you begin, or it starts with your first ticked set.</span></span><button class="btn s" type="button" data-act="tstart" style="border-color:var(--sig)">Start</button></div></div>';
     if(!lg.done){var m=Math.max(0,Math.round((Date.now()-lg.t0)/60000)),D0=dayById(U.day);
       return '<div class="card clock" style="margin-top:14px"><div class="row"><span><b>Started '+hm(lg.t0)+'</b><br><span class="note" style="margin:0">'+new Date(lg.t0).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+' · <span id="sofar">'+m+'</span> min so far. The end time is set when you tap Finish.</span></span><button class="linkb" type="button" data-act="tedit">Edit</button></div>'+
-        (D0?'<div class="note" id="eta" aria-live="polite" style="margin:8px 0 0">'+etaText(D0,lg)+'</div>':'')+(U.tedit?timeFields(lg):'')+'</div>'}
+        (D0?'<div class="note" id="eta" aria-live="polite" style="margin:8px 0 0">'+etaText(D0,lg)+'</div>':'')+hrCard(lg)+(U.tedit?timeFields(lg):'')+'</div>'}
     var bt=lg.bt||[];
     if(bt.length)return '<div class="card clock" style="margin-top:14px"><div class="row"><span><b>'+new Date(lg.t0).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'})+'</b><br><span class="note" style="margin:0">'+hm(lg.t0)+'–'+hm(endOf(lg))+' · '+lg.mins+' min</span></span><button class="linkb" type="button" data-act="tedit">'+(U.tedit?'Close':'Edit times')+'</button></div>'+
-      '<div class="note" style="margin:8px 0 0">'+bt.map(function(x){return esc(x.label)+' '+x.act+' min'+(x.act>x.plan+2?' <span style="color:var(--knee)">(planned '+x.plan+')</span>':'')}).join(' · ')+'</div>'+(U.tedit?timeFields(lg):'')+'</div>';
-    return '<div class="card clock" style="margin-top:14px"><div class="row"><span><b>'+new Date(lg.t0).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'})+'</b><br><span class="note" style="margin:0">'+hm(lg.t0)+'–'+hm(endOf(lg))+' · '+lg.mins+' min</span></span><button class="linkb" type="button" data-act="tedit">'+(U.tedit?'Close':'Edit times')+'</button></div>'+(U.tedit?timeFields(lg):'')+'</div>';
+      '<div class="note" style="margin:8px 0 0">'+bt.map(function(x){return esc(x.label)+' '+x.act+' min'+(x.act>x.plan+2?' <span style="color:var(--knee)">(planned '+x.plan+')</span>':'')}).join(' · ')+'</div>'+setsTable(lg)+(U.tedit?timeFields(lg):'')+'</div>';
+    return '<div class="card clock" style="margin-top:14px"><div class="row"><span><b>'+new Date(lg.t0).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'})+'</b><br><span class="note" style="margin:0">'+hm(lg.t0)+'–'+hm(endOf(lg))+' · '+lg.mins+' min</span></span><button class="linkb" type="button" data-act="tedit">'+(U.tedit?'Close':'Edit times')+'</button></div>'+setsTable(lg)+(U.tedit?timeFields(lg):'')+'</div>';
   }
   function timeFields(lg){
     var e=endOf(lg)||Date.now();
@@ -1879,6 +1997,10 @@ var INFO={
     lines.push('Other WHOOP-recorded activities, such as jiu-jitsu (not the gym sessions above): '+((S.whw||[]).filter(function(w){return !matchedWh(w)}).slice(-14).map(function(w){return w.d+' '+w.sport+' '+w.min+'min strain '+w.strain+(w.avg?' avgHR '+w.avg:'')}).join('; ')||'none')+'.');
     if(S.wh&&S.wh.length)lines.push('WHOOP daily data (date recovery%/HRV/RHR/sleep%/sleep hours/day strain): '+S.wh.slice(-14).map(function(x){return x.d+' '+[x.rec,x.hrv,x.rhr,x.sleep,x.sleepH,x.strain].map(function(v){return v==null?'-':v}).join('/')}).join('; ')+'.');
     (function(){var fs=fbSessions();if(fs.length)lines.push('How sessions felt (your rating, then evidence): '+fs.map(function(s){return s.date+' '+s.id+': '+FEEL[s.feel-1].toLowerCase()+(s.energy?', energy '+ENERGY[s.energy-1].toLowerCase():'')+(s.body?', body '+BODY[s.body-1].toLowerCase():'')+' | last-set reps vs target '+(s.sur==null?'n/a':(s.sur>=0?'+':'')+s.sur)+(s.rec!=null?', recovery '+s.rec+'%':'')+(s.pain?', pain '+s.pain+'/10':'')}).join('; ')+'. Only recommend programming changes from how sessions felt when the evidence agrees; when it does not, say so and hold.')})();
+    (function(){var rs=doneLogs().sort(function(a,b){return a.l.t0-b.l.t0}).slice(-6).filter(function(x){return x.l.sets&&x.l.sets.length});
+      if(rs.length)lines.push('Set timing and heart rate per session (time per set includes the rest before it; sets ticked together share time equally): '+rs.map(function(x){var ss=x.l.sets,top=ss.filter(function(s){return s.b==='main'&&s.i>=3}),t=top[top.length-1];
+        return logDate(x.l)+' '+x.id+': '+ss.length+' sets, avg '+fmtSec(avg(ss.map(function(s){return s.e-s.s})))+' per set'+(ss.some(function(s){return s.est})?' (estimated)':'')+(t?', top set '+t.w+'x'+t.r+(t.max?' peak HR '+t.max+(t.rec!=null?' drop '+t.rec+' in 60s':''):''):'')+(x.l.hrSum?', session HR avg '+x.l.hrSum.avg+' max '+x.l.hrSum.max:'')+(x.l.wh&&x.l.wh.z?', WHOOP zones min '+x.l.wh.z.join('/'):'')}).join('; ')+'.');
+      var hi=hrInsights();if(hi.length)lines.push('Notable heart-rate and effort changes: '+hi.join(' ')+' Report on these where they matter.');})();
     lines.push('The app\'s own rule-based flags: '+(A.findings.map(function(f){return f.title}).join('; ')||'none')+'.');
     lines.push('Tasks: 1) Name the two or three most important inefficiencies or imbalances, using height, bodyweight and recovery as context where they matter. 2) For each, give one specific fix that fits inside 45 minutes: say what to swap or trim, not only what to add. 3) Say whether any training max should change now, and why. 4) For any pain note, suggest one alternative exercise that avoids the described painful movement but trains the same area. 5) One recovery or load-management note given the mat training. Do not diagnose injuries; if any pain flag is 4 or higher, tell them to see a physio if it repeats. Be direct and specific to these numbers.');
     return lines.join('\n');
@@ -1900,7 +2022,8 @@ var INFO={
 
   function vProgress(){
     var k=U.pTab,pts=S.hist.filter(function(x){return x.lift===k});
-    var h='<h1>Progress</h1><h2>Calendar</h2>'+calCard()+'<h2>Strength</h2><p class="note" style="margin:0 0 8px">Estimated max from your best set each session. Orange dots are new records.</p><div class="chips">';
+    var hi=hrInsights();
+    var h='<h1>Progress</h1><h2>Calendar</h2>'+calCard()+'<h2>Heart rate and effort</h2><div class="card">'+(hi.length?hi.map(function(t){return '<div class="note" style="margin:0 0 8px;color:var(--ink)">• '+esc(t)+'</div>'}).join(''):'<div class="note" style="margin:0">Nothing notable yet. After a few weeks this shows changes in peak heart rate on your top sets, recovery between sets, time per set, WHOOP strain per minute, resting heart rate and HRV, but only when something has moved.</div>')+'</div>'+'<h2>Strength</h2><p class="note" style="margin:0 0 8px">Estimated max from your best set each session. Orange dots are new records.</p><div class="chips">';
     LIFTS.forEach(function(L){h+='<button type="button" class="chip" data-act="ptab" data-k="'+L.k+'" aria-pressed="'+(L.k===k)+'">'+L.n+'</button>'});
     h+='</div><div class="card" style="margin-top:10px">'+(pts.length?line(pts.map(function(p){return p.e}),pts.map(function(p){return p.pr}),'kg','Estimated max over time'):'<div class="note" style="text-align:center;padding:26px 0">No sessions logged for this lift yet.</div>')+'</div>';
     var ct=U.cTab,cs=Object.keys(S.cardio).map(function(x){return S.cardio[x]}).filter(function(c){return c.mode===ct}).sort(function(a,b){return a.d<b.d?-1:1});
@@ -2021,7 +2144,7 @@ var INFO={
     else if(a==='back'){U.view='today';U.msg='';stopTimer();setTimeout(function(){whSync(false)},0)}
     else if(a==='mw'||a==='mr'){var s0=mSet(lg,D.lift,+d.i);if(a==='mw')setMS(lg,+d.i,{w:Math.max(0,+(s0.w+(+d.d)*inc()).toFixed(2))});else setMS(lg,+d.i,{r:Math.max(0,s0.r+(+d.d))})}
     else if(a==='mdone'||a==='mtog'){
-      var i=+d.i,s1=mSet(lg,D.lift,i);touch(lg);stamp(lg,'main');
+      var i=+d.i,s1=mSet(lg,D.lift,i);touch(lg);stamp(lg,'main',i);
       setMS(lg,i,{w:s1.w,r:s1.r,done:a==='mdone'?true:!s1.done});
       var nowDone=mSet(lg,D.lift,i).done;
       if(nowDone&&i<5)rest(i<3?60:i===4?180:150,i<3?'Warm-up rest':i===4?'Rest before the last set':'Rest between work sets');
@@ -2031,7 +2154,7 @@ var INFO={
     else if(a==='tstart'){touch(lg)}
     else if(a==='tedit'){U.tedit=!U.tedit}
     else if(a==='tsave'){if(!lg.t0)touch(lg);var okT=setTimes(lg,$('tdate').value,$('tstartin').value,lg.done?$('tendin').value:hhmm(Date.now()));
-      if(lg.done&&okT){lg.t1=lg.t1}if(!lg.done){lg.t1=null;lg.mins=null}U.tedit=false;if(okT&&lg.done)setTimeout(function(){whMatch()},300)}
+      if(lg.done&&okT){lg.t1=lg.t1;try{buildSets(D,lg)}catch(e){}}if(!lg.done){lg.t1=null;lg.mins=null}U.tedit=false;if(okT&&lg.done)setTimeout(function(){whMatch()},300)}
     else if(a==='calm'){var cm=U.calM||today().slice(0,7),yy=+cm.slice(0,4),mm=+cm.slice(5,7)-1+(+d.d),nd=new Date(yy,mm,1);U.calM=nd.getFullYear()+'-'+('0'+(nd.getMonth()+1)).slice(-2)}
     else if(a==='calday'){U.cal=d.d;U.xdel=null}
     else if(a==='cclose'){U.cal=null}
@@ -2050,7 +2173,7 @@ var INFO={
     else if(a==='rapply'){var rr3=(S.reports||[]).filter(function(x){return x.id===d.r})[0];if(rr3)applyR(rr3,d.type,d.k)}
     else if(a==='undo'){var u=S.undo;if(u){S.tm[u.k]=u.from;S.undo=null;U.msg='Training max put back to '+fmt(u.from)+' kg.';U.undoShow=false}}
     else if(a==='xs'){
-      var arr2=lg.ex[d.id]=lg.ex[d.id]||[],j=+d.i;arr2[j]=!arr2[j];touch(lg);if(arr2[j])stamp(lg,d.id);
+      var arr2=lg.ex[d.id]=lg.ex[d.id]||[],j=+d.i;arr2[j]=!arr2[j];touch(lg);if(arr2[j])stamp(lg,d.id,j);
       if(EX[d.id]){var x=xSet(lg,d.id,j),xs=lg.xs[d.id]=lg.xs[d.id]||[];xs[j]=xs[j]||{};if(xs[j].w==null&&x.w!=='')xs[j].w=num(x.w);if(xs[j].r==null&&x.r!=='')xs[j].r=+x.r}
       if(arr2[j]&&EX[d.id]&&EX[d.id].rest>0)rest(EX[d.id].rest,EX[d.id].n+' rest');
     }
@@ -2075,7 +2198,7 @@ var INFO={
     else if(a==='alt'){if(d.a)S.alts[d.id]=d.a;else delete S.alts[d.id]}
     else if(a==='cmach'){var c=cardioEntry(d.k,D,d.k.split('-').pop());c.machine=c.machine===d.v?'':d.v}
     else if(a==='seq'){startSeq(d.k==='zone2'?'Zone 2':d.k==='int'?'Intervals':d.k==='sprint'?'Sprints':d.k==='hang'?'Hangs':d.k==='couch'?'Stretch':'Warm-up',seqFor(d.k));if(lg){touch(lg);save()}return}
-    else if(a==='finish'){if(!lg.t0)touch(lg);if(!lg.done){lg.t1=Date.now()}lg.mins=Math.max(1,Math.round((endOf(lg)-lg.t0)/60000));U.tedit=false;progressAccessories(lg);try{lg.bt=blockTimes(D,lg)}catch(e){}rwFinish(lg);lg.done=true;lg.skipped=false;stopTimer();U.lv=null;U.copied='';setTimeout(function(){ghBackup(true);whSync(true);whMatch()},500);setTimeout(whMatch,2.5*60000);setTimeout(whMatch,10*60000)}
+    else if(a==='finish'){if(!lg.t0)touch(lg);if(!lg.done){lg.t1=Date.now()}lg.mins=Math.max(1,Math.round((endOf(lg)-lg.t0)/60000));U.tedit=false;progressAccessories(lg);try{lg.bt=blockTimes(D,lg)}catch(e){}try{buildSets(D,lg)}catch(e){}rwFinish(lg);lg.done=true;lg.skipped=false;stopTimer();U.lv=null;U.copied='';setTimeout(function(){ghBackup(true);whSync(true);whMatch()},500);setTimeout(whMatch,2.5*60000);setTimeout(whMatch,10*60000)}
     else if(a==='copywhoop'){copyText(whoop(D,lg).text,function(){U.copied='whoop';V()},'whoopbox');return}
     else if(a==='skip'){lg.skipped=true;lg.done=false;U.view='today';stopTimer()}
     else if(a==='unskip'){lg.skipped=false}
@@ -2093,6 +2216,7 @@ var INFO={
     else if(a==='dismiss'){S.dismiss[d.id]=true}
     else if(a==='undismiss'){delete S.dismiss[d.id]}
     else if(a==='fb'){lg.fb=lg.fb||{};var fv=+d.v;lg.fb[d.k]=lg.fb[d.k]===fv?null:fv;lg.fb.t=Date.now()}
+    else if(a==='hrcon'){hrConnect();return}
     else if(a==='fbapply'){var ff=(A.findings||[]).filter(function(x){return x.id===d.id})[0];
       if(ff&&ff.act){if(ff.act.t==='tm'){S.undo={k:ff.act.k,from:S.tm[ff.act.k]};S.tm[ff.act.k]=ff.act.v;U.undoShow=true}else S.heavy=!!ff.act.v;S.dismiss[ff.id]=true}}
     else if(a==='applytm'){var ah=A.ahead[d.k];if(ah)S.tm[d.k]=ah.suggest}
