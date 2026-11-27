@@ -653,7 +653,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='4.0 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='4.0.1 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -1082,7 +1082,7 @@ var INFO={
   function srvErr(e,what){var s=e&&e.status;if(s===401&&e.msg&&/access code/i.test(e.msg))return 'Your server did not accept the access code. Check it in Settings.';
     if(s===401)return what+' did not accept the login. Tap Connect WHOOP again.';if(s===403)return 'Your server is not allowing this site. Check ALLOWED_ORIGIN in Cloudflare.';
     if(s===500)return (e.msg||'Server setting missing')+' Check the variables in Cloudflare.';if(s===429)return what+' is busy. Try again in a few minutes.';
-    return s?'The server returned an error ('+s+').':'Could not reach your server. Check the address and your connection.'}
+    return s?'The server returned an error ('+s+').':'Could not reach your server, or it blocked this site. Open the server address in Chrome: it should say "Iron and Mat server is running". If it does, check ALLOWED_ORIGIN in Cloudflare is exactly https://mhnz666.github.io (no slash at the end).'}
   function whToken(){
     var w=whCfg();if(!w.refresh)return Promise.reject({status:0,none:true});
     if(w.access&&w.exp-60000>Date.now())return Promise.resolve(w.access);
