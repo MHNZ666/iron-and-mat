@@ -168,6 +168,8 @@ svg text{fill:var(--dim);font:600 11px var(--body)}
 .wgrid small{display:block;font-size:11px;color:var(--dim);line-height:1.2}
 .photo{cursor:pointer}
 @media (max-width:380px){.th,.tr{grid-template-columns:36px 1fr 80px 62px}.wgrid{grid-template-columns:repeat(3,1fr)}}
+.clock b{font:700 18px var(--display);text-transform:uppercase;letter-spacing:.02em}
+input[type=date],input[type=time]{width:100%;min-height:48px;border:1.5px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink);font:600 16px var(--body);padding:0 8px;color-scheme:dark}
 [hidden]{display:none!important}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -653,7 +655,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='4.1 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='4.3 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -786,7 +788,7 @@ var INFO={
   function bwNow(){return S.bw.length?S.bw[S.bw.length-1].w:''}
 
   function sessions(){
-    return Object.keys(S.logs).map(function(k){var p=k.split('-'),l=S.logs[k];return {c:+p[0],wk:+p[1],id:p[2],done:l.done,skipped:l.skipped,mins:l.mins||0}})
+    return Object.keys(S.logs).map(function(k){var p=k.split('-'),l=S.logs[k];return {c:+p[0],wk:+p[1],id:p[2],done:l.done,skipped:l.skipped,mins:l.mins||0,t0:l.t0||0,t1:endOf(l)||0}})
       .filter(function(s){return s.done||s.skipped}).sort(function(a,b){return a.c-b.c||a.wk-b.wk||(a.id<b.id?-1:1)});
   }
   function analyse(){return Rules.review({unit:S.unit,tm:S.tm,hist:S.hist,cycle:S.cycle,bw:S.bw,h:+S.h||0,pu:S.pu,pain:S.pain,sessions:sessions(),loadHist:S.loadHist,dismissed:S.dismiss,step:inc()})}
@@ -1111,7 +1113,7 @@ var INFO={
   function first(j){return j&&j.records&&j.records[0]||null}
   function whSync(force){
     var w=whCfg();if(!w.refresh||WH.busy)return;
-    if(!force&&S.whoop&&Date.now()-S.whoop.t<30*60000)return;
+    if(!force&&S.whoop&&Date.now()-S.whoop.t<5*60000)return;
     WH.busy=true;
     Promise.all([whGet('/v2/recovery?limit=1').catch(function(){return null}),whGet('/v2/activity/sleep?limit=1').catch(function(){return null}),
       whGet('/v2/cycle?limit=1').catch(function(){return whGet('/v1/cycle?limit=1').catch(function(){return null})}),whGet('/v2/user/measurement/body').catch(function(){return null})])
@@ -1129,7 +1131,7 @@ var INFO={
   }
   function whMatch(){
     if(!whCfg().refresh)return;
-    var keys=Object.keys(S.logs).filter(function(k){var l=S.logs[k];return l.done&&l.t0&&!l.wh&&(!l.whTry||Date.now()-l.whTry>3600e3)&&Date.now()-l.t0<7*864e5}).slice(-3);
+    var keys=Object.keys(S.logs).filter(function(k){var l=S.logs[k];l.tl=endOf(l);return l.done&&l.t0&&!l.wh&&(!l.whTry||Date.now()-l.whTry>4*60000)&&Date.now()-l.t0<7*864e5}).slice(-3);
     keys.forEach(function(k){var l=S.logs[k];l.whTry=Date.now();
       var a=new Date(l.t0-30*60000).toISOString(),b=new Date((l.tl||l.t0)+60*60000).toISOString();
       whGet('/v2/activity/workout?start='+encodeURIComponent(a)+'&end='+encodeURIComponent(b)+'&limit=5').then(function(j){
@@ -1143,7 +1145,7 @@ var INFO={
   function hm(ts){var x=new Date(ts),h=x.getHours(),m=x.getMinutes(),ap=h<12?'am':'pm';h=h%12||12;return h+':'+('0'+m).slice(-2)+ap}
   function tzName(){var z='';try{z=Intl.DateTimeFormat().resolvedOptions().timeZone||''}catch(e){}var ab='';try{ab=new Date().toLocaleTimeString('en-AU',{timeZoneName:'short'}).split(' ').pop()}catch(e){}return (z||'Local time')+(ab&&!/^\d/.test(ab)?' ('+ab+')':'')}
   function whoop(d,lg){
-    var L=[],miss=[],t0=lg.t0||Date.now(),t1=lg.tl||t0,dt=new Date(t0),n=0;
+    var L=[],miss=[],t0=lg.t0||Date.now(),t1=endOf(lg)||t0,dt=new Date(t0),n=0;
     var ymd=dt.getFullYear()+'-'+('0'+(dt.getMonth()+1)).slice(-2)+'-'+('0'+dt.getDate()).slice(-2);
     L.push('Please attach these exercises to my recorded workout.');
     L.push('Date: '+ymd);L.push('Time: '+hm(t0)+'–'+hm(t1));L.push('Timezone: '+tzName());
@@ -1234,7 +1236,7 @@ var INFO={
     var w=S.whoop,con=!!whCfg().refresh;
     if(!con)return '';
     if(!w||w.rec==null)return '<div class="card" style="margin-top:12px"><div class="note" style="margin:0">'+(WH.busy?'Fetching your WHOOP data…':esc(WH.msg||'No WHOOP recovery yet today.'))+'</div></div>';
-    var h='<div class="card whc" style="margin-top:12px"><div class="row"><span class="k2">WHOOP today</span><span class="note" style="margin:0">'+new Date(w.t).toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'})+'</span></div><div class="wgrid">'+
+    var h='<div class="card whc" style="margin-top:12px"><div class="row"><span class="k2">WHOOP today</span><span class="row" style="gap:8px"><span class="note" style="margin:0">'+(WH.busy?'Updating…':'Updated '+new Date(w.t).toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'}))+'</span><button type="button" class="qb" data-act="whsync" aria-label="Refresh WHOOP data"'+(WH.busy?' disabled':'')+'>↻</button></span></div><div class="wgrid">'+
       '<div><b style="color:'+recCol(w.rec)+'">'+w.rec+'%</b><small>Recovery</small></div><div><b>'+(w.hrv||'–')+'</b><small>HRV ms</small></div><div><b>'+(w.rhr||'–')+'</b><small>Resting HR</small></div><div><b>'+(w.sleep!=null?w.sleep+'%':'–')+'</b><small>Sleep'+(w.sleepH?' · '+w.sleepH+' h':'')+'</small></div><div><b>'+(w.strain!=null?w.strain:'–')+'</b><small>Day strain</small></div></div>';
     if(w.rec<34)h+='<div class="note" style="color:var(--sig)">Low recovery. Consider Heavy mat week for today, and stop last sets at the prescribed reps.</div>'+(S.heavy?'':'<button class="btn s" type="button" data-act="heavy" style="margin-top:6px">Turn on Heavy mat week</button>');
     else if(w.rec<67)h+='<div class="note">Moderate recovery. Train as planned, but do not chase a record if the warm-ups feel heavy.</div>';
@@ -1281,6 +1283,7 @@ var INFO={
       h+='<div class="note">Copy this into WHOOP’s coach so the exercises are attached to the workout it recorded.</div><div class="whoop" id="whooptext">'+esc(wsum.text)+'</div>'+
          '<div style="margin-top:10px" class="stack"><button class="cta" type="button" data-act="copywhoop">'+(U.copied==='whoop'?'Copied':'Copy for WHOOP')+'</button><textarea id="whoopbox" aria-label="Session summary text" hidden></textarea></div></div>';
     }
+    h+=clockCard(lg);
     h+='<div class="budget" aria-hidden="true"><i style="width:'+Math.min(100,Math.round(mins/45*100))+'%"></i></div><div class="bn"><span>Planned ≈ '+mins+' min</span><span>Cap 45 min</span></div>';
     if(lg.skipped)h+='<div class="banner">Skipped this week. <button type="button" class="btn s" data-act="unskip" style="margin-left:8px">Restore</button></div>';
     blocksOf(d).forEach(function(b){
@@ -1310,6 +1313,18 @@ var INFO={
     return h;
   }
 
+  function clockCard(lg){
+    if(lg.skipped)return '';
+    if(!lg.t0)return '<div class="card clock" style="margin-top:14px"><div class="row"><span><b>Not started</b><br><span class="note" style="margin:0">Tap Start when you begin, or it starts with your first ticked set.</span></span><button class="btn s" type="button" data-act="tstart" style="border-color:var(--sig)">Start</button></div></div>';
+    if(!lg.done){var m=Math.max(0,Math.round((Date.now()-lg.t0)/60000));
+      return '<div class="card clock" style="margin-top:14px"><div class="row"><span><b>Started '+hm(lg.t0)+'</b><br><span class="note" style="margin:0">'+new Date(lg.t0).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+' · '+m+' min so far. The end time is set when you tap Finish.</span></span><button class="linkb" type="button" data-act="tedit">Edit</button></div>'+(U.tedit?timeFields(lg):'')+'</div>'}
+    return '<div class="card clock" style="margin-top:14px"><div class="row"><span><b>'+new Date(lg.t0).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'})+'</b><br><span class="note" style="margin:0">'+hm(lg.t0)+'–'+hm(endOf(lg))+' · '+lg.mins+' min</span></span><button class="linkb" type="button" data-act="tedit">'+(U.tedit?'Close':'Edit times')+'</button></div>'+(U.tedit?timeFields(lg):'')+'</div>';
+  }
+  function timeFields(lg){
+    var e=endOf(lg)||Date.now();
+    return '<div class="fields" style="grid-template-columns:1.3fr 1fr 1fr;margin-top:10px"><label class="f">Date<input type="date" id="tdate" value="'+ymdOf(lg.t0)+'"></label><label class="f">Start<input type="time" id="tstartin" value="'+hhmm(lg.t0)+'"></label><label class="f">End<input type="time" id="tendin" value="'+hhmm(e)+'"></label></div>'+
+      '<div style="margin-top:10px"><button class="btn w" type="button" data-act="tsave">Save times</button></div><div class="note">Use this if you forgot to start or finish in the app, so WHOOP and your history line up.</div>';
+  }
   function vReview(){
     var h='<h1>Review</h1><p class="sub">Checks your lifts against each other and your bodyweight, and adds accessory work where something lags. It updates every time you log.</p>';
     var trend=A.trend?(A.trend.pct>=0?'+':'')+Math.round(A.trend.pct*1000)/10+'% over '+A.trend.days+' days':'Log weekly to see a trend';
@@ -1371,7 +1386,7 @@ var INFO={
     lines.push('Pain flags (most recent last): '+(S.pain.slice(-10).map(function(p){return (p.part||'Knee')+(p.side?' '+p.side.toLowerCase():'')+' '+p.v+'/10'+(p.ex?' on '+p.ex:'')+(p.id?' [exercise id '+p.id+']':'')+(p.note?'. Description: '+p.note:'')+(p.trig?'. Caused by: '+p.trig:'')}).join('; ')||'none')+'.');
     var sw=Object.keys(S.subs).filter(function(k){return EX[S.subs[k]]}).map(function(k){return k+' -> '+EX[S.subs[k]].n});
     lines.push('Current swaps: '+(sw.join('; ')||'none')+'.');
-    var ss=sessions().slice(-10).map(function(s){return s.id+(s.skipped?' skipped':' '+(s.mins||'?')+' min')});
+    var ss=sessions().slice(-10).map(function(s){return s.id+(s.skipped?' skipped':' '+(s.t0?ymdOf(s.t0)+' '+hhmm(s.t0)+'-'+hhmm(s.t1)+' ':'')+(s.mins||'?')+' min')});
     lines.push('Recent sessions: '+(ss.join(', ')||'none')+'.');
     lines.push('Accessory working weights (kg): '+Object.keys(S.loads).filter(function(k){return S.loads[k]&&EX[k]}).map(function(k){return EX[k].n+' '+S.loads[k]}).join('; ')+'.');
     var cd=Object.keys(S.cardio).map(function(k){var c=S.cardio[k];return c.d+' '+c.mode+(c.machine?' '+c.machine:'')+(c.min?' '+c.min+'min':'')+(c.dist?' '+c.dist+'km':'')+(c.w?' '+c.w+'W':'')+(c.hr?' HR'+c.hr:'')+(c.photo&&!(c.w||c.dist||c.cal)?' [photo '+c.photo+' needs reading]':'')}).slice(-10);
@@ -1412,6 +1427,11 @@ var INFO={
       '<div class="set" style="grid-template-columns:1fr auto"><span>Sessions done</span><span class="w">'+dn.length+'</span></div>'+
       '<div class="set" style="grid-template-columns:1fr auto"><span>Skipped</span><span class="w">'+(cy.length-dn.length)+'</span></div>'+
       '<div class="set" style="grid-template-columns:1fr auto"><span>Average session</span><span class="w">'+(mm.length?Math.round(mm.reduce(function(a,b){return a+b},0)/mm.length)+' min':'–')+'</span></div></div></div>';
+    var rec=ss.filter(function(s){return s.done&&s.t0}).sort(function(a,b){return b.t0-a.t0}).slice(0,8);
+    h+='<h2>Recent sessions</h2><div class="card"><div class="sets">';
+    if(!rec.length)h+='<div class="note" style="margin:0">Finished sessions appear here with their date and times.</div>';
+    rec.forEach(function(s){var dd=dayById(s.id),lg2=S.logs[s.c+'-'+s.wk+'-'+s.id]||{};h+='<div class="set" style="grid-template-columns:1fr auto"><span>'+esc(dd?dd.title:s.id)+'<br><span class="p">'+new Date(s.t0).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+' · '+hm(s.t0)+'–'+hm(s.t1)+'</span></span><span class="w">'+s.mins+' min'+(lg2.wh?'<br><span class="p">strain '+lg2.wh.strain+'</span>':'')+'</span></div>'});
+    h+='</div></div>';
     h+='<h2>Training maxes</h2><div class="card"><div class="sets">';
     LIFTS.forEach(function(L){h+='<div class="set" style="grid-template-columns:1fr auto"><span><b>'+L.n+'</b></span><span class="w">'+fmt(S.tm[L.k])+' kg</span></div>'});
     h+='</div></div><h2>Pain flags</h2><div class="card">';
@@ -1484,7 +1504,14 @@ var INFO={
     if(S.h)S.h=Math.round(+S.h*2.54*10)/10;
     S.unit=to;
   }
-  function touch(lg){var n=Date.now();if(!lg.t0||n-(lg.tl||lg.t0)>3*3600e3){lg.t0=n}lg.tl=n}
+  function touch(lg){var n=Date.now();if(!lg.t0){lg.t0=n;lg.date=today()}lg.tl=n}
+  function ymdOf(ts){var x=new Date(ts);return x.getFullYear()+'-'+('0'+(x.getMonth()+1)).slice(-2)+'-'+('0'+x.getDate()).slice(-2)}
+  function hhmm(ts){var x=new Date(ts);return ('0'+x.getHours()).slice(-2)+':'+('0'+x.getMinutes()).slice(-2)}
+  function endOf(l){return l.t1||l.tl||l.t0}
+  function setTimes(lg,date,start,end){
+    var s=new Date(date+'T'+start),e=new Date(date+'T'+end);if(isNaN(s)||isNaN(e))return false;
+    if(e<=s)e=new Date(e.getTime()+864e5);
+    lg.t0=s.getTime();lg.t1=e.getTime();lg.tl=lg.t1;lg.date=date;lg.mins=Math.max(1,Math.round((lg.t1-lg.t0)/60000));lg.wh=null;lg.whTry=0;return true}
   function copyText(txt,done,fallbackId){
     try{navigator.clipboard.writeText(txt).then(done,function(){fb()})}catch(e){fb()}
     function fb(){var box=$(fallbackId);if(box){box.hidden=false;box.value=txt;box.focus();box.select()}}
@@ -1495,11 +1522,11 @@ var INFO={
     var a=b.dataset.act,d=b.dataset,D=U.day?dayById(U.day):null,lg=D&&U.view==='session'?getLog(D.id):null;
     if(a==='tstop'){stopTimer();return}
     if(a==='tnext'){if(T.i<T.ph.length-1)begin(T.i+1);else stopTimer();return}
-    if(a==='tab'){U.view=d.v;U.msg='';U.ask=false;if(d.v==='review')ghReview(false)}
+    if(a==='tab'){U.view=d.v;U.msg='';U.ask=false;if(d.v==='review')ghReview(false);if(d.v==='today')setTimeout(function(){whSync(false)},0)}
     else if(a==='start'){LIFTS.forEach(function(L){S.tm[L.k]=Core.rnd(exEst(L.k)*.9,inc(),'near')});
       var ob=parseFloat(U.obw);if(ob>0)S.bw.push({d:today(),w:ob});S.onboarded=true;U.view='today'}
-    else if(a==='open'){U.day=d.d;U.view='session';U.msg='';U.copied=''}
-    else if(a==='back'){U.view='today';U.msg='';stopTimer()}
+    else if(a==='open'){U.day=d.d;U.view='session';U.msg='';U.copied='';U.tedit=false}
+    else if(a==='back'){U.view='today';U.msg='';stopTimer();setTimeout(function(){whSync(false)},0)}
     else if(a==='mw'||a==='mr'){var s0=mSet(lg,D.lift,+d.i);if(a==='mw')setMS(lg,+d.i,{w:Math.max(0,+(s0.w+(+d.d)*inc()).toFixed(2))});else setMS(lg,+d.i,{r:Math.max(0,s0.r+(+d.d))})}
     else if(a==='mdone'||a==='mtog'){
       var i=+d.i,s1=mSet(lg,D.lift,i);touch(lg);
@@ -1509,6 +1536,10 @@ var INFO={
       U.msg='';var allW=[3,4,5].every(function(j){return mSet(lg,D.lift,j).done});
       if(allW)mainDone(D,lg);else{var id=lkey(D.id);S.hist=S.hist.filter(function(h){return h.id!==id})}
     }
+    else if(a==='tstart'){touch(lg)}
+    else if(a==='tedit'){U.tedit=!U.tedit}
+    else if(a==='tsave'){if(!lg.t0)touch(lg);var okT=setTimes(lg,$('tdate').value,$('tstartin').value,lg.done?$('tendin').value:hhmm(Date.now()));
+      if(lg.done&&okT){lg.t1=lg.t1}if(!lg.done){lg.t1=null;lg.mins=null}U.tedit=false;if(okT&&lg.done)setTimeout(function(){whMatch()},300)}
     else if(a==='undo'){var u=S.undo;if(u){S.tm[u.k]=u.from;S.undo=null;U.msg='Training max put back to '+fmt(u.from)+' kg.';U.undoShow=false}}
     else if(a==='xs'){
       var arr2=lg.ex[d.id]=lg.ex[d.id]||[],j=+d.i;arr2[j]=!arr2[j];touch(lg);
@@ -1536,7 +1567,7 @@ var INFO={
     else if(a==='alt'){if(d.a)S.alts[d.id]=d.a;else delete S.alts[d.id]}
     else if(a==='cmach'){var c=cardioEntry(d.k,D,d.k.split('-').pop());c.machine=c.machine===d.v?'':d.v}
     else if(a==='seq'){startSeq(d.k==='zone2'?'Zone 2':d.k==='int'?'Intervals':d.k==='sprint'?'Sprints':d.k==='hang'?'Hangs':d.k==='couch'?'Stretch':'Warm-up',seqFor(d.k));if(lg){touch(lg);save()}return}
-    else if(a==='finish'){if(!lg.t0)touch(lg);lg.mins=Math.max(1,Math.round(((lg.tl||Date.now())-lg.t0)/60000));progressAccessories(lg);lg.done=true;lg.skipped=false;stopTimer();U.lv=null;U.copied='';setTimeout(function(){ghBackup(true);whMatch()},500)}
+    else if(a==='finish'){if(!lg.t0)touch(lg);if(!lg.done){lg.t1=Date.now()}lg.mins=Math.max(1,Math.round((endOf(lg)-lg.t0)/60000));U.tedit=false;progressAccessories(lg);lg.done=true;lg.skipped=false;stopTimer();U.lv=null;U.copied='';setTimeout(function(){ghBackup(true);whSync(true);whMatch()},500);setTimeout(whMatch,2.5*60000);setTimeout(whMatch,10*60000)}
     else if(a==='copywhoop'){copyText(whoop(D,lg).text,function(){U.copied='whoop';V()},'whoopbox');return}
     else if(a==='skip'){lg.skipped=true;lg.done=false;U.view='today';stopTimer()}
     else if(a==='unskip'){lg.skipped=false}
@@ -1589,6 +1620,7 @@ var INFO={
     else if(t.dataset.obw){U.obw=t.value}
     else if(t.dataset.pu){S.pu=t.value===''?'':Math.max(0,Math.round(v));save()}
   });
+  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'){whSync(false);whMatch()}});
   whCallback();
   V();
   setTimeout(initSync,0);
