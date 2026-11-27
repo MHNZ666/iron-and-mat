@@ -767,7 +767,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='5.2 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='5.2.1 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -1072,7 +1072,10 @@ var INFO={
     xs.forEach(function(x,i){num2+=(x-mx)*(ys[i]-my);den+=(x-mx)*(x-mx)});return den?num2/den:null}
   function goalStatus(k){
     var g=(S.goals||{})[k];if(!g||!(+g.to))return null;var s=goalSeries(k),cur=s.length?s[s.length-1].v:null;if(cur==null)return {k:k,to:+g.to,cur:null};
-    var from=g.from!=null?+g.from:cur,to=+g.to,span=to-from,pct=span?Math.max(0,Math.min(100,Math.round((cur-from)/span*100))):100;
+    var from=g.from!=null?+g.from:cur,to=+g.to;
+    // if you started further from the target than the value saved when the goal was set, count from there
+    if((to<from&&cur>from)||(to>from&&cur<from)){from=cur;g.from=cur}
+    var span=to-from,pct=span?Math.max(0,Math.min(100,Math.round((cur-from)/span*100))):100;
     var rec=s.filter(function(x){return x.d>=addDays(today(),-42)}),sl=slopePerDay(rec),eta=null,dir=to>=cur?1:-1;
     if(Math.abs(to-cur)<0.05)eta='reached';else if(sl&&sl*dir>0)eta=addDays(today(),Math.round((to-cur)/sl));
     return {k:k,to:to,cur:Math.round(cur*100)/100,from:from,pct:pct,eta:eta,rate:sl?Math.round(sl*7*100)/100:null};
