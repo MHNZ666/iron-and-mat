@@ -740,7 +740,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='4.7 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='4.8 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -917,7 +917,7 @@ var INFO={
   function bwNow(){return S.bw.length?S.bw[S.bw.length-1].w:''}
 
   function sessions(){
-    return Object.keys(S.logs).map(function(k){var p=k.split('-'),l=S.logs[k];return {c:+p[0],wk:+p[1],id:p[2],done:l.done,skipped:l.skipped,mins:l.mins||0,t0:l.t0||0,t1:endOf(l)||0}})
+    return Object.keys(S.logs).map(function(k){var p=k.split('-'),l=S.logs[k];return {c:+p[0],wk:+p[1],id:p[2],done:l.done,skipped:l.skipped,mins:l.mins||0,t0:l.t0||0,t1:endOf(l)||0,bt:l.bt||null}})
       .filter(function(s){return s.done||s.skipped}).sort(function(a,b){return a.c-b.c||a.wk-b.wk||(a.id<b.id?-1:1)});
   }
   function analyse(){return Rules.review({unit:S.unit,tm:S.tm,hist:S.hist,cycle:S.cycle,bw:S.bw,h:+S.h||0,pu:S.pu,pain:S.pain,sessions:sessions(),loadHist:S.loadHist,dismissed:S.dismiss,step:inc()})}
@@ -936,6 +936,47 @@ var INFO={
   }
   function extrasOf(d){var ad=addonFor(d.id);return (d.extras||[]).filter(function(x){return x!==ad})}
   function dayMin(d){return Prog.dayMin(d,S.cycle,S.week,S.heavy,addonFor(d.id))}
+  /* ---------- background time tracking and finish estimate ---------- */
+  function stamp(lg,b){lg.tk=lg.tk||[];lg.tk.push({b:b,t:Date.now()});if(lg.tk.length>300)lg.tk=lg.tk.slice(-300)}
+  function blockUnits(d,b,lg){
+    // how much of a block is done, in ticked sets, and the block's planned minutes
+    var m=b.t==='sprint'||b.t==='cond'?Prog.blockMin(b,S.cycle,S.week,S.heavy):b.m||0,n=0,k=0,ids=[];
+    if(b.t==='main'){n=6;for(var i=0;i<6;i++)if(mSet(lg,d.lift,i).done)k++;ids=['main']}
+    else if(b.t==='cond'||b.t==='sprint'){var key=b.t==='cond'?'cond':'sprint';n=1;k=(lg.ex[key]||[])[0]?1:0;ids=[key]}
+    else (b.ex||[]).forEach(function(id){var rid=exId(id),e=EX[rid];if(!e)return;var s=Prog.sets(e,S.heavy);n+=s;
+      var a=lg.ex[rid]||[];for(var j=0;j<s;j++)if(a[j])k++;ids.push(rid)});
+    return {label:b.label,m:m,n:n,k:k,f:n?Math.min(1,k/n):0,ids:ids};
+  }
+  function pace(d,lg){
+    var bl=blocksOf(d).map(function(b){return blockUnits(d,b,lg)}),plan=0,doneM=0;
+    bl.forEach(function(x){plan+=x.m;doneM+=x.m*x.f});
+    if(!lg.t0||lg.done)return {plan:plan,bl:bl};
+    var now=Date.now(),last=lg.tl||lg.t0,el=(last-lg.t0)/60000,since=(now-last)/60000;
+    // your rate so far: real minutes per planned minute, once there is enough to judge
+    var r=doneM>=4?Math.max(0.5,Math.min(2.5,el/doneM)):1;
+    // time since your last tick counts as work on the current block, but only up to that block's expected time
+    var cur=bl.filter(function(x){return x.f<1})[0],curLeft=cur?cur.m*(1-cur.f)*r:0;
+    var left=Math.max(0,(plan-doneM)*r-Math.min(since,curLeft));
+    var tot=(now-lg.t0)/60000+left;
+    return {plan:plan,bl:bl,doneM:doneM,rate:r,left:Math.round(left),eta:now+left*60000,tot:Math.round(tot),judged:doneM>=4};
+  }
+  function etaText(d,lg){
+    var p=pace(d,lg);if(p.eta==null)return '';
+    var cap=lg.t0+45*60000,over=Math.round((p.eta-cap)/60000),pc=Math.round((p.rate-1)*100);
+    var s='<b>Finish ≈ '+hm(p.eta)+'</b> · '+p.left+' min left · about '+p.tot+' min in all';
+    s+='<br>'+(!p.judged?'Based on the plan until you have ticked a few sets.':Math.abs(pc)<8?'You are on the planned pace.':pc>0?'You are going '+pc+'% slower than planned.':'You are going '+(-pc)+'% faster than planned.');
+    if(over>0)s+='<br><span style="color:var(--knee)">That is about '+over+' min past your 45-minute cap. Shorten rests, or leave the optional extras.</span>';
+    return s;
+  }
+  function blockTimes(d,lg){
+    // minutes actually spent in each block, from the times of your ticks
+    var tk=(lg.tk||[]).slice().sort(function(a,b){return a.t-b.t}),bl=pace(d,lg).bl,prev=lg.t0,out=[];
+    bl.forEach(function(x){var ts=tk.filter(function(t){return x.ids.indexOf(t.b)>=0}).map(function(t){return t.t});if(!ts.length)return;
+      var end=Math.max.apply(null,ts),st=Math.min(prev,Math.min.apply(null,ts));out.push({label:x.label,plan:x.m,act:Math.max(0,Math.round((end-st)/60000))});prev=end});
+    return out;
+  }
+  setInterval(function(){var el=document.getElementById('eta');if(!el||U.view!=='session')return;var D=dayById(U.day),lg=D&&S.logs[lkey(U.day)];if(!lg)return;el.innerHTML=etaText(D,lg);
+    var so=document.getElementById('sofar');if(so&&lg.t0)so.textContent=Math.max(0,Math.round((Date.now()-lg.t0)/60000))},20000);
 
   /* ---------- number helpers for sets ---------- */
   function rng(s){s=String(s||'');if(/\d\s*s\b|min|\bm\b|steps|tank|failure|×/.test(s))return null;var m=s.match(/(\d+)(?:\s*[–-]\s*(\d+))?/);return m?[+m[1],+(m[2]||m[1])]:null}
@@ -1515,8 +1556,12 @@ var INFO={
   function clockCard(lg){
     if(lg.skipped)return '';
     if(!lg.t0)return '<div class="card clock" style="margin-top:14px"><div class="row"><span><b>Not started</b><br><span class="note" style="margin:0">Tap Start when you begin, or it starts with your first ticked set.</span></span><button class="btn s" type="button" data-act="tstart" style="border-color:var(--sig)">Start</button></div></div>';
-    if(!lg.done){var m=Math.max(0,Math.round((Date.now()-lg.t0)/60000));
-      return '<div class="card clock" style="margin-top:14px"><div class="row"><span><b>Started '+hm(lg.t0)+'</b><br><span class="note" style="margin:0">'+new Date(lg.t0).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+' · '+m+' min so far. The end time is set when you tap Finish.</span></span><button class="linkb" type="button" data-act="tedit">Edit</button></div>'+(U.tedit?timeFields(lg):'')+'</div>'}
+    if(!lg.done){var m=Math.max(0,Math.round((Date.now()-lg.t0)/60000)),D0=dayById(U.day);
+      return '<div class="card clock" style="margin-top:14px"><div class="row"><span><b>Started '+hm(lg.t0)+'</b><br><span class="note" style="margin:0">'+new Date(lg.t0).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+' · <span id="sofar">'+m+'</span> min so far. The end time is set when you tap Finish.</span></span><button class="linkb" type="button" data-act="tedit">Edit</button></div>'+
+        (D0?'<div class="note" id="eta" aria-live="polite" style="margin:8px 0 0">'+etaText(D0,lg)+'</div>':'')+(U.tedit?timeFields(lg):'')+'</div>'}
+    var bt=lg.bt||[];
+    if(bt.length)return '<div class="card clock" style="margin-top:14px"><div class="row"><span><b>'+new Date(lg.t0).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'})+'</b><br><span class="note" style="margin:0">'+hm(lg.t0)+'–'+hm(endOf(lg))+' · '+lg.mins+' min</span></span><button class="linkb" type="button" data-act="tedit">'+(U.tedit?'Close':'Edit times')+'</button></div>'+
+      '<div class="note" style="margin:8px 0 0">'+bt.map(function(x){return esc(x.label)+' '+x.act+' min'+(x.act>x.plan+2?' <span style="color:var(--knee)">(planned '+x.plan+')</span>':'')}).join(' · ')+'</div>'+(U.tedit?timeFields(lg):'')+'</div>';
     return '<div class="card clock" style="margin-top:14px"><div class="row"><span><b>'+new Date(lg.t0).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'})+'</b><br><span class="note" style="margin:0">'+hm(lg.t0)+'–'+hm(endOf(lg))+' · '+lg.mins+' min</span></span><button class="linkb" type="button" data-act="tedit">'+(U.tedit?'Close':'Edit times')+'</button></div>'+(U.tedit?timeFields(lg):'')+'</div>';
   }
   function timeFields(lg){
@@ -1698,7 +1743,7 @@ var INFO={
     lines.push('Pain flags (most recent last): '+(S.pain.slice(-10).map(function(p){return (p.part||'Knee')+(p.side?' '+p.side.toLowerCase():'')+' '+p.v+'/10'+(p.ex?' on '+p.ex:'')+(p.id?' [exercise id '+p.id+']':'')+(p.note?'. Description: '+p.note:'')+(p.trig?'. Caused by: '+p.trig:'')}).join('; ')||'none')+'.');
     var sw=Object.keys(S.subs).filter(function(k){return EX[S.subs[k]]}).map(function(k){return k+' -> '+EX[S.subs[k]].n});
     lines.push('Current swaps: '+(sw.join('; ')||'none')+'.');
-    var ss=sessions().slice(-10).map(function(s){return s.id+(s.skipped?' skipped':' '+(s.t0?ymdOf(s.t0)+' '+hhmm(s.t0)+'-'+hhmm(s.t1)+' ':'')+(s.mins||'?')+' min')});
+    var ss=sessions().slice(-10).map(function(s){return s.id+(s.skipped?' skipped':' '+(s.t0?ymdOf(s.t0)+' '+hhmm(s.t0)+'-'+hhmm(s.t1)+' ':'')+(s.mins||'?')+' min'+(s.bt&&s.bt.length?' ['+s.bt.map(function(x){return x.label+' '+x.act+'/'+x.plan}).join(', ')+' actual/planned min]':''))});
     lines.push('Recent sessions: '+(ss.join(', ')||'none')+'.');
     lines.push('Accessory working weights (kg): '+Object.keys(S.loads).filter(function(k){return S.loads[k]&&EX[k]}).map(function(k){return EX[k].n+' '+S.loads[k]}).join('; ')+'.');
     var cd=Object.keys(S.cardio).map(function(k){var c=S.cardio[k];return c.d+' '+c.mode+(c.machine?' '+c.machine:'')+(c.min?' '+c.min+'min':'')+(c.dist?' '+c.dist+'km':'')+(c.w?' '+c.w+'W':'')+(c.hr?' HR'+c.hr:'')+(c.photo&&!(c.w||c.dist||c.cal)?' [photo '+c.photo+' needs reading]':'')}).slice(-10);
@@ -1851,7 +1896,7 @@ var INFO={
     else if(a==='back'){U.view='today';U.msg='';stopTimer();setTimeout(function(){whSync(false)},0)}
     else if(a==='mw'||a==='mr'){var s0=mSet(lg,D.lift,+d.i);if(a==='mw')setMS(lg,+d.i,{w:Math.max(0,+(s0.w+(+d.d)*inc()).toFixed(2))});else setMS(lg,+d.i,{r:Math.max(0,s0.r+(+d.d))})}
     else if(a==='mdone'||a==='mtog'){
-      var i=+d.i,s1=mSet(lg,D.lift,i);touch(lg);
+      var i=+d.i,s1=mSet(lg,D.lift,i);touch(lg);stamp(lg,'main');
       setMS(lg,i,{w:s1.w,r:s1.r,done:a==='mdone'?true:!s1.done});
       var nowDone=mSet(lg,D.lift,i).done;
       if(nowDone&&i<5)rest(i<3?60:i===4?180:150,i<3?'Warm-up rest':i===4?'Rest before the last set':'Rest between work sets');
@@ -1880,7 +1925,7 @@ var INFO={
     else if(a==='rapply'){var rr3=(S.reports||[]).filter(function(x){return x.id===d.r})[0];if(rr3)applyR(rr3,d.type,d.k)}
     else if(a==='undo'){var u=S.undo;if(u){S.tm[u.k]=u.from;S.undo=null;U.msg='Training max put back to '+fmt(u.from)+' kg.';U.undoShow=false}}
     else if(a==='xs'){
-      var arr2=lg.ex[d.id]=lg.ex[d.id]||[],j=+d.i;arr2[j]=!arr2[j];touch(lg);
+      var arr2=lg.ex[d.id]=lg.ex[d.id]||[],j=+d.i;arr2[j]=!arr2[j];touch(lg);if(arr2[j])stamp(lg,d.id);
       if(EX[d.id]){var x=xSet(lg,d.id,j),xs=lg.xs[d.id]=lg.xs[d.id]||[];xs[j]=xs[j]||{};if(xs[j].w==null&&x.w!=='')xs[j].w=num(x.w);if(xs[j].r==null&&x.r!=='')xs[j].r=+x.r}
       if(arr2[j]&&EX[d.id]&&EX[d.id].rest>0)rest(EX[d.id].rest,EX[d.id].n+' rest');
     }
@@ -1905,7 +1950,7 @@ var INFO={
     else if(a==='alt'){if(d.a)S.alts[d.id]=d.a;else delete S.alts[d.id]}
     else if(a==='cmach'){var c=cardioEntry(d.k,D,d.k.split('-').pop());c.machine=c.machine===d.v?'':d.v}
     else if(a==='seq'){startSeq(d.k==='zone2'?'Zone 2':d.k==='int'?'Intervals':d.k==='sprint'?'Sprints':d.k==='hang'?'Hangs':d.k==='couch'?'Stretch':'Warm-up',seqFor(d.k));if(lg){touch(lg);save()}return}
-    else if(a==='finish'){if(!lg.t0)touch(lg);if(!lg.done){lg.t1=Date.now()}lg.mins=Math.max(1,Math.round((endOf(lg)-lg.t0)/60000));U.tedit=false;progressAccessories(lg);rwFinish(lg);lg.done=true;lg.skipped=false;stopTimer();U.lv=null;U.copied='';setTimeout(function(){ghBackup(true);whSync(true);whMatch()},500);setTimeout(whMatch,2.5*60000);setTimeout(whMatch,10*60000)}
+    else if(a==='finish'){if(!lg.t0)touch(lg);if(!lg.done){lg.t1=Date.now()}lg.mins=Math.max(1,Math.round((endOf(lg)-lg.t0)/60000));U.tedit=false;progressAccessories(lg);try{lg.bt=blockTimes(D,lg)}catch(e){}rwFinish(lg);lg.done=true;lg.skipped=false;stopTimer();U.lv=null;U.copied='';setTimeout(function(){ghBackup(true);whSync(true);whMatch()},500);setTimeout(whMatch,2.5*60000);setTimeout(whMatch,10*60000)}
     else if(a==='copywhoop'){copyText(whoop(D,lg).text,function(){U.copied='whoop';V()},'whoopbox');return}
     else if(a==='skip'){lg.skipped=true;lg.done=false;U.view='today';stopTimer()}
     else if(a==='unskip'){lg.skipped=false}
