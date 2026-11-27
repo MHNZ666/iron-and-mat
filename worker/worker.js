@@ -75,7 +75,7 @@ export default {
       const ask = "This is a photo of a gym cardio machine's display (bike, BikeErg, air bike or rower). Read only what is clearly visible. " +
         "Reply with JSON only, no other text, using this shape: {\"machine\": \"BikeErg|Echo bike|Rower|Other|\", \"min\": number or null (total elapsed time in minutes, decimals allowed), " +
         "\"dist\": number or null (distance in km; convert metres to km), \"w\": number or null (average watts), \"hr\": number or null (average heart rate), " +
-        "\"mhr\": number or null (max heart rate), \"cal\": number or null (calories), \"notes\": \"short note on anything unclear\"}. " +
+        "\"mhr\": number or null (max heart rate), \"cal\": number or null (calories), \"speed\": number or null (treadmill speed in km/h), \"incline\": number or null (treadmill incline %), \"lvl\": number or null (resistance or damper level), \"notes\": \"short note on anything unclear\"}. " +
         "Use null for anything you cannot read with confidence. Never guess.";
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -91,18 +91,18 @@ export default {
       let out = {};
       try { out = m ? JSON.parse(m[0]) : {}; } catch (e) { return reply(502, { error: "Could not read the screen." }); }
       const n = (v) => (typeof v === "number" && isFinite(v) && v >= 0 && v < 100000 ? Math.round(v * 100) / 100 : null);
-      return reply(200, { machine: String(out.machine || "").slice(0, 20), min: n(out.min), dist: n(out.dist), w: n(out.w), hr: n(out.hr), mhr: n(out.mhr), cal: n(out.cal), notes: String(out.notes || "").slice(0, 200) });
+      return reply(200, { machine: String(out.machine || "").slice(0, 20), min: n(out.min), dist: n(out.dist), w: n(out.w), hr: n(out.hr), mhr: n(out.mhr), cal: n(out.cal), speed: n(out.speed), incline: n(out.incline), lvl: n(out.lvl), notes: String(out.notes || "").slice(0, 200) });
     }
 
     // Instant Claude review (optional)
     if (path === "/" || path === "/review") {
       if (!env.ANTHROPIC_API_KEY) return reply(501, { error: "Instant reviews are not set up on this server." });
       const prompt = String(body.prompt || "");
-      if (!prompt || prompt.length > 12000) return reply(400, { error: "Missing or oversized prompt." });
+      if (!prompt || prompt.length > 20000) return reply(400, { error: "Missing or oversized prompt." });
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-        body: JSON.stringify({ model: MODEL, max_tokens: 900, messages: [{ role: "user", content: prompt }] }),
+        body: JSON.stringify({ model: MODEL, max_tokens: Math.min(4000, Math.max(300, parseInt(body.max_tokens, 10) || 900)), messages: [{ role: "user", content: prompt }] }),
       });
       if (!r.ok) return reply(r.status === 429 ? 429 : 502, { error: "Anthropic API error " + r.status });
       const j = await r.json();

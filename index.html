@@ -110,7 +110,7 @@ input:focus,textarea:focus{border-color:var(--sig);outline:none}
 .optx{border:1px dashed var(--line);border-radius:16px;padding:12px;margin-top:16px}
 svg text{fill:var(--dim);font:600 11px var(--body)}
 .tabs{position:fixed;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:5}
-.tabs .in{max-width:520px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
+.tabs .in{max-width:520px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr)}
 .tabs button{border:0;background:none;min-height:58px;font:700 12px var(--body);letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
 .tabs button[aria-current="page"]{color:var(--ink);box-shadow:inset 0 3px 0 var(--sig)}
 #timer{position:fixed;left:16px;right:16px;bottom:calc(72px + env(safe-area-inset-bottom));max-width:488px;margin:0 auto;z-index:6;background:var(--ink);color:var(--bg);border-radius:16px;padding:10px 10px 10px 18px;display:none;align-items:center;justify-content:space-between;gap:8px;box-shadow:0 8px 30px rgba(0,0,0,.5)}
@@ -183,6 +183,17 @@ i.g{background:var(--sig)} i.x{background:#5b9cf0} i.w{background:var(--ok)}
 .legend span{display:inline-flex;align-items:center;gap:5px}
 .dl{margin:8px 0 0 18px;padding:0;line-height:1.5;font-size:14px}
 .dl b{font-weight:700}
+.tabs button{font-size:11px!important;letter-spacing:.06em!important}
+.rep{text-align:left;width:100%}
+.rep .rh{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.rep h3{font:700 20px var(--display);text-transform:uppercase;letter-spacing:.02em;margin:0}
+.rsec{margin-top:14px}
+.rsec h4{font:700 12px var(--body);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin:0 0 4px}
+.rsec p{margin:0;line-height:1.55;font-size:15px;white-space:pre-wrap}
+.kind{font:700 11px var(--body);letter-spacing:.08em;text-transform:uppercase;border-radius:6px;padding:3px 7px;background:var(--panel2);color:var(--dim);white-space:nowrap}
+.kind.weekly{background:var(--sig);color:var(--sig-ink)}
+.applied{color:var(--ok)!important;border-color:var(--ok)!important}
+.nexttgt{background:color-mix(in srgb,var(--ok) 12%,var(--panel));border:1px solid color-mix(in srgb,var(--ok) 40%,var(--line));border-radius:12px;padding:10px 12px;margin-top:10px;font-size:14px;line-height:1.45}
 [hidden]{display:none!important}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -197,6 +208,7 @@ i.g{background:var(--sig)} i.x{background:#5b9cf0} i.w{background:var(--ok)}
   <button type="button" data-act="tab" data-v="today">Train</button>
   <button type="button" data-act="tab" data-v="review">Review<span class="bd" id="revdot" hidden></span></button>
   <button type="button" data-act="tab" data-v="progress">Progress</button>
+  <button type="button" data-act="tab" data-v="reports">Reports<span class="bd" id="repdot" hidden></span></button>
   <button type="button" data-act="tab" data-v="settings">Settings</button>
 </div></nav>
 
@@ -668,7 +680,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='4.4 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='4.5 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -682,13 +694,14 @@ var INFO={
     ex:{squat:{w:100,r:5},bench:{w:70,r:5},dead:{w:140,r:5},press:{w:47.5,r:5}},
     tm:{},cycle:1,week:0,logs:{},hist:[],loads:{},alts:{},pain:[],
     h:'',bw:[],pu:'',loadHist:{},dismiss:{},claude:null,reviewDue:false,u:0,
-    step:5,subs:{},custom:{},cardio:{},lnote:{},undo:null,wh:[],whoop:null,whw:[],extra:[]}}
+    step:5,subs:{},custom:{},cardio:{},lnote:{},undo:null,wh:[],whoop:null,whw:[],extra:[],reports:[],ctarget:{}}}
   function load(){try{var j=localStorage.getItem(KEY);if(j)return Object.assign(defaults(),JSON.parse(j))}catch(e){}return defaults()}
   var S=load();
   function mergeCustom(){Object.keys(S.custom||{}).forEach(function(k){EX[k]=S.custom[k]})}
   mergeCustom();
+  setTimeout(function(){migrateReports()},0);
   if(S.unit!=='kg')convert('kg');
-  var U={view:S.onboarded?'today':'onboard',day:null,pTab:'squat',cTab:'zone2',msg:'',nc:{},bk:'',ask:false,lv:null,cl:null,copied:'',pf:null,sw:null,info:null,photo:{},cal:null,calM:null,xw:null};
+  var U={view:S.onboarded?'today':'onboard',day:null,pTab:'squat',cTab:'zone2',msg:'',nc:{},bk:'',ask:false,lv:null,cl:null,copied:'',pf:null,sw:null,info:null,photo:{},cal:null,calM:null,xw:null,ropen:null,rbusy:false,rerr:''};
   var A=null;
   var APIKEY='iron-mat-api';
   var SERVER='https://iron-and-mat.marcushandley91.workers.dev';
@@ -740,7 +753,7 @@ var INFO={
       if(!r||typeof r.text!=='string')return;
       var old=S.remote||{};if(old.date===r.date&&old.text===r.text)return;
       S.remote={date:String(r.date||''),text:r.text.slice(0,6000),tm:r.tm&&typeof r.tm==='object'?r.tm:{},notes:Array.isArray(r.changes)?r.changes.slice(0,8).map(String):[],subs:cleanSubs(r.subs),applied:{},seen:false};
-      mergeCardio(r.cardio);
+      mergeCardio(r.cardio);addReport(normReport(r,'weekly'));
       save();V();
     }).catch(function(){});
   }
@@ -1031,17 +1044,51 @@ var INFO={
   }
 
   /* ---------- cardio ---------- */
-  var MACH=['BikeErg','Echo bike','Rower','Other'];
+  var MACH=['BikeErg','Echo bike','Rower','Treadmill','Other'];
   function cKey(d,kind){return lkey(d.id)+'-'+kind}
   function cardioCard(d,kind,lg){
     var key=cKey(d,kind),c=S.cardio[key]||{},iv=kind==='cond'&&Prog.condMode(S.week)==='intervals',ph=U.photo[key]||'';
     var h='<div class="card" style="margin-top:10px"><div class="row"><b style="font:700 18px var(--display);text-transform:uppercase">Machine stats</b>'+(c.src==='photo'?'<span class="pill">Read from photo</span>':'')+'</div><div class="chips">';
     MACH.forEach(function(m){h+='<button type="button" class="chip" data-act="cmach" data-k="'+key+'" data-v="'+m+'" aria-pressed="'+(c.machine===m)+'">'+m+'</button>'});
+    var tm=c.machine==='Treadmill';
     h+='</div><div class="fields" style="grid-template-columns:1fr 1fr 1fr">'+
       cf(key,'min','Minutes',c.min)+cf(key,'dist','Distance km',c.dist)+cf(key,'cal','Calories',c.cal)+
-      cf(key,'w','Avg watts',c.w)+cf(key,'hr','Avg HR',c.hr)+cf(key,'mhr','Max HR',c.mhr)+'</div>'+
+      (tm?cf(key,'speed','Speed km/h',c.speed)+cf(key,'incline','Incline %',c.incline):cf(key,'w','Avg watts',c.w)+cf(key,'lvl','Level / damper',c.lvl))+cf(key,'hr','Avg HR',c.hr)+
+      '</div><div class="fields" style="grid-template-columns:1fr 1fr 1fr">'+cf(key,'mhr','Max HR',c.mhr)+'<span></span><span></span></div>'+
+      nextCardio(kind==='sprint'?'sprint':iv?'int':'zone2',c,lg)+
       '<label class="btn w photo" style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px">'+(c.photo?'Retake photo of the screen':'Take a photo of the screen')+'<input type="file" accept="image/*" capture="environment" data-photo="'+key+'" hidden></label>'+
       '<div class="note" id="ph-'+key+'">'+esc(ph||(c.read?'Numbers read from your photo. Check them and correct anything wrong.':c.photo?'Photo saved. Any blanks are filled in by the Sunday review.':'Take a photo at the end of the session and the app reads the numbers for you, or type them in.'))+'</div></div>';
+    return h;
+  }
+  function maxHR(){return S.whoop&&S.whoop.maxhr||190}
+  function band(mode){var mx=maxHR();return mode==='zone2'?[130,145]:mode==='int'?[Math.round(mx*.85),Math.round(mx*.95)]:null}
+  function r5(x){return Math.round(x/5)*5}
+  function cardioAdvice(mode,c,lg){
+    var hr=num(c.hr),mhr=num(c.mhr);if(hr==null&&lg&&lg.wh&&lg.wh.avg){hr=lg.wh.avg;mhr=mhr||lg.wh.max}
+    var b=band(mode),w=num(c.w),lvl=num(c.lvl),sp=num(c.speed),inc2=num(c.incline),tm=c.machine==='Treadmill',f=1,why='';
+    if(mode==='sprint'){f=1.03;why='Beat last time: aim about 3% more output on each sprint.'}
+    else if(!b||hr==null){f=1.03;why='No heart rate logged, so a small step up. Add your average heart rate next time for a better target.'}
+    else{var x=mode==='int'&&mhr?mhr:hr;
+      if(x<b[0]){f=1.05;why=(mode==='int'?'Peak':'Average')+' heart rate '+x+' was below the '+b[0]+'–'+b[1]+' target, so push harder.'}
+      else if(x<=b[1]){f=1.025;why='Heart rate '+x+' was on target. A small step up keeps you progressing.'}
+      else{f=.96;why='Heart rate '+x+' was above the '+b[0]+'–'+b[1]+' target. Ease off slightly to stay in the right zone.'}}
+    var t={};
+    if(tm){var big=f>1.04,up=f>1;
+      if(inc2!=null){t.incline=Math.max(0,Math.round((inc2+(big?1:up?0.5:-0.5))*2)/2);if(sp!=null)t.speed=sp}
+      else if(sp!=null)t.speed=Math.max(1,Math.round((sp+(big?0.3:up?0.2:-0.2))*10)/10)}
+    else{if(w!=null)t.w=r5(w*f);if(lvl!=null)t.lvl=f>1.04?lvl+1:f>1?lvl:Math.max(1,lvl-1)}
+    if(b){t.hrLo=b[0];t.hrHi=b[1]}
+    return {t:t,why:why,have:Object.keys(t).some(function(k){return k!=='hrLo'&&k!=='hrHi'})};
+  }
+  function lastCardio(mode,exceptKey){var ks=Object.keys(S.cardio).filter(function(k){var c=S.cardio[k];return c.mode===mode&&k!==exceptKey&&(c.w||c.speed||c.lvl||c.hr)}).sort(function(p,q){return S.cardio[p].d<S.cardio[q].d?-1:1});return ks.length?{k:ks[ks.length-1],c:S.cardio[ks[ks.length-1]]}:null}
+  function nextCardio(mode,c,lg){
+    var tg=S.ctarget&&S.ctarget[mode],key=null;Object.keys(S.cardio).forEach(function(k){if(S.cardio[k]===c)key=k});
+    var cur=(c&&(c.w||c.speed||c.lvl||c.hr))?{c:c,lg:lg}:null,prev=lastCardio(mode,key),h='';
+    if(prev&&!cur){var lgp=S.logs[prev.k.split('-').slice(0,3).join('-')],ad=cardioAdvice(mode,prev.c,lgp);
+      if(tg&&tg.t>new Date(prev.c.d+'T23:59:59').getTime())h='<div class="nexttgt"><b>Today’s target</b> (from your report): '+esc(tgtText(tg))+'</div>';
+      else if(ad.have)h='<div class="nexttgt"><b>Today’s target:</b> '+esc(tgtText(ad.t))+'. '+esc(ad.why)+'</div>'}
+    else if(!prev&&!cur&&tg)h='<div class="nexttgt"><b>Today’s target</b> (from your report): '+esc(tgtText(tg))+'</div>';
+    if(cur){var ad2=cardioAdvice(mode,c,lg);if(ad2.have)h+='<div class="nexttgt"><b>Next time:</b> '+esc(tgtText(ad2.t))+'. '+esc(ad2.why)+'</div>'}
     return h;
   }
   function cf(key,f,label,v){return '<label class="f">'+label+'<input type="number" inputmode="decimal" step="any" data-cf="'+f+'" data-k="'+key+'" value="'+(v==null?'':esc(v))+'"></label>'}
@@ -1065,8 +1112,8 @@ var INFO={
     }).then(function(r){
       var rd=r[0],sv=r[1],got=[],msg='';
       if(sv.saved)c.photo=sv.saved;
-      if(rd.ok){var j=rd.ok,lab={min:' min',dist:' km',w:' W avg',hr:' avg HR',mhr:' max HR',cal:' cal'};
-        ['min','dist','w','hr','mhr','cal'].forEach(function(f){var v=num(j[f]);if(v!=null){c[f]=v;got.push(fmt(v)+lab[f])}});
+      if(rd.ok){var j=rd.ok,lab={min:' min',dist:' km',w:' W avg',hr:' avg HR',mhr:' max HR',cal:' cal',speed:' km/h',incline:'% incline',lvl:' level'};
+        ['min','dist','w','hr','mhr','cal','speed','incline','lvl'].forEach(function(f){var v=num(j[f]);if(v!=null){c[f]=v;got.push(fmt(v)+lab[f])}});
         if(j.machine&&MACH.indexOf(j.machine)>=0&&!c.machine)c.machine=j.machine;
         c.src='photo';c.read=true;
         msg=got.length?'Read from the photo: '+got.join(', ')+'. Check them and correct anything wrong.'+(j.notes?' Note: '+j.notes:''):'Could not read any numbers clearly. Type them in, or retake the photo straight on and closer.';
@@ -1079,7 +1126,7 @@ var INFO={
   function mergeCardio(list){
     if(!Array.isArray(list))return;
     list.forEach(function(x){if(!x||!x.photo)return;Object.keys(S.cardio).forEach(function(k){var c=S.cardio[k];if(c.photo!==x.photo)return;
-      ['min','dist','cal','w','hr','mhr'].forEach(function(f){var v=num(x[f]);if(v!=null&&(c[f]==null||c[f]===''))c[f]=v});if(x.machine&&!c.machine)c.machine=String(x.machine).slice(0,20);c.src='photo'})});
+      ['min','dist','cal','w','hr','mhr','speed','incline','lvl'].forEach(function(f){var v=num(x[f]);if(v!=null&&(c[f]==null||c[f]===''))c[f]=v});if(x.machine&&!c.machine)c.machine=String(x.machine).slice(0,20);c.src='photo'})});
   }
   function cleanSubs(o){var out={};if(!o||typeof o!=='object')return out;
     Object.keys(o).slice(0,6).forEach(function(k){var v=o[k];if(!v||typeof v!=='object'||!v.n)return;if(!(EX[k]||/^main-(squat|bench|dead|press)$/.test(k)))return;
@@ -1217,8 +1264,9 @@ var INFO={
       var on=b.dataset.v===v||(v==='session'&&b.dataset.v==='today');
       if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');
     });
-    $('revdot').hidden=!(A&&((S.remote&&!S.remote.seen)||S.reviewDue||A.findings.some(function(f){return f.sev==='high'&&!f.dismissed})));
-    h=v==='onboard'?vOnboard():v==='today'?vToday():v==='session'?vSession():v==='review'?vReview():v==='progress'?vProgress():v==='settings'?vSettings():vNext();
+    $('revdot').hidden=!(A&&(S.reviewDue||A.findings.some(function(f){return f.sev==='high'&&!f.dismissed})));
+    $('repdot').hidden=!(S.reports||[]).some(function(r){return !r.seen});
+    h=v==='onboard'?vOnboard():v==='today'?vToday():v==='session'?vSession():v==='review'?vReview():v==='reports'?vReports():v==='progress'?vProgress():v==='settings'?vSettings():vNext();
     if(U.pf)h+=painModal();else if(U.info)h+=infoModal();else if(U.sw)h+=swapModal();else if(U.xw)h+=xModal();else if(U.cal)h+=dayModal();
     var y=window.scrollY;$('view').innerHTML=h;
     var ct=$('cltext');if(ct){var t=U.cl&&U.cl.text!=null?U.cl.text:(S.claude?S.claude.text:'');ct.textContent=t}
@@ -1409,6 +1457,71 @@ var INFO={
     h+='<div class="note">If WHOOP recorded it too, it shows next to this in the calendar. Extra workouts go into your weekly review.</div>';
     return h+'<div style="margin-top:12px"><button class="cta" type="button" data-act="xsave"'+(f.type&&f.d?'':' disabled')+'>Save</button></div></div></div>';
   }
+  /* ---------- reports ---------- */
+  function cleanTargets(o){var out={};if(!o||typeof o!=='object')return out;
+    ['zone2','int','sprint'].forEach(function(m){var v=o[m];if(!v||typeof v!=='object')return;var t={};
+      ['w','speed','incline','lvl','hrLo','hrHi','min'].forEach(function(f){var n=num(v[f]);if(n!=null&&n>=0&&n<5000)t[f]=Math.round(n*10)/10});
+      if(v.note)t.note=String(v.note).slice(0,240);if(Object.keys(t).length)out[m]=t});return out}
+  function normReport(r,kind){
+    var secs=Array.isArray(r.sections)?r.sections.slice(0,10).map(function(s){return {h:String(s&&s.h||'').slice(0,60),t:String(s&&s.t||'').slice(0,2500)}}).filter(function(s){return s.t}):[];
+    return {id:(kind==='weekly'?'w':'i')+(r.date||'')+'-'+Date.now().toString(36),t:Date.now(),date:String(r.date||today()),kind:kind,title:String(r.title||(kind==='weekly'?'Weekly review':'Training report')).slice(0,90),
+      text:String(r.text||'').slice(0,8000),sections:secs,changes:Array.isArray(r.changes)?r.changes.slice(0,8).map(function(x){return String(x).slice(0,300)}):[],
+      tm:r.tm&&typeof r.tm==='object'?r.tm:{},subs:cleanSubs(r.subs),targets:cleanTargets(r.targets),applied:{},seen:false,basedOn:String(r.basedOn||'')}
+  }
+  function addReport(rp){S.reports=S.reports||[];if(rp.kind==='weekly'&&S.reports.some(function(x){return x.kind==='weekly'&&x.date===rp.date&&(x.text===rp.text||x.basedOn&&x.basedOn===rp.basedOn)}))return;S.reports.push(rp);if(S.reports.length>200)S.reports=S.reports.slice(-200);save()}
+  function migrateReports(){var ch=false;S.reports=S.reports||[];
+    if(S.remote&&!S.reports.some(function(x){return x.kind==='weekly'})){addReport(normReport({date:S.remote.date,text:S.remote.text,changes:S.remote.notes,tm:S.remote.tm,subs:S.remote.subs},'weekly'));ch=true}
+    if(S.claude&&S.claude.text&&!S.reports.some(function(x){return x.kind==='instant'})){var rp=normReport({text:S.claude.text,date:ymdOf(S.claude.t||Date.now())},'instant');rp.t=S.claude.t||rp.t;S.reports.push(rp);ch=true}
+    if(ch){save();V()}}
+  function reportPrompt(){
+    var base=claudePrompt().split('\n').filter(function(l){return !/^You are a strength coach|^Tasks:/.test(l)});
+    var cd=Object.keys(S.cardio).map(function(k){var c=S.cardio[k];return c.d+' '+c.mode+(c.machine?' '+c.machine:'')+(c.min?' '+c.min+'min':'')+(c.dist?' '+c.dist+'km':'')+(c.w?' avg '+c.w+'W':'')+(c.lvl?' level '+c.lvl:'')+(c.speed?' '+c.speed+'km/h':'')+(c.incline?' incline '+c.incline+'%':'')+(c.hr?' avgHR '+c.hr:'')+(c.mhr?' maxHR '+c.mhr:'')}).slice(-12);
+    var mx=S.whoop&&S.whoop.maxhr||190;
+    return ['You are an experienced strength and conditioning coach writing an in-depth training report for one athlete. Be specific to the numbers given, direct, and practical.']
+      .concat(base).concat([
+      'Cardio detail (most recent last): '+(cd.join('; ')||'none')+'. Max heart rate: '+mx+' bpm. Zone 2 target 130-145 bpm. Intervals target 85-95% of max heart rate in the hard minutes.',
+      'Write the report as JSON only, with no text before or after it, in this shape:',
+      '{"title": "short headline", "sections": [{"h": "Summary", "t": "..."}, {"h": "Strength", "t": "..."}, {"h": "Balance and weak points", "t": "..."}, {"h": "Conditioning", "t": "..."}, {"h": "Recovery and load", "t": "..."}, {"h": "Joints and pain", "t": "..."}, {"h": "Next week", "t": "..."}], "changes": ["up to 6 concrete changes that fit inside 45-minute sessions"], "tm": {"squat": number}, "subs": {"<exercise id>": {"n": "name", "sets": 3, "reps": "8-12", "cue": "how to do it", "why": "why it avoids the pain"}}, "targets": {"zone2": {"w": number, "lvl": number, "speed": number, "incline": number, "hrLo": 130, "hrHi": 145, "note": "what to change next time"}, "int": {...}, "sprint": {...}}}',
+      'Rules: plain text inside strings (no markdown, no asterisks). Each section 60-160 words. Use "tm" only for lifts whose training max should change now, rounded to '+inc()+' kg and within 15% of the current value. Use "subs" only for exercises with a pain note. In "targets", give next-session targets for each cardio type with data: if average heart rate was below the target band, raise resistance, watts, speed or incline by about 5%; if it was inside the band, raise by about 2-3%; if above, hold or lower by about 5%. Only include fields that suit the machine used (watts or level for bikes and rowers, speed and incline for treadmills). Do not diagnose injuries; recommend a physio for repeated pain of 4 or more.'
+    ]).join('\n');
+  }
+  function parseJSON(t){var m=String(t||'').match(/\{[\s\S]*\}/);if(!m)return null;try{return JSON.parse(m[0])}catch(e){return null}}
+  function runReport(){
+    if(U.rbusy)return;U.rbusy=true;U.rerr='';V();
+    var p=reportPrompt(),done=function(text){var j=parseJSON(text),rp=normReport(j||{text:text},'instant');if(!j)rp.title='Training report';addReport(rp);U.ropen=rp.id;rp.seen=true;U.rbusy=false;save();V()},
+      fail=function(msg){U.rbusy=false;U.rerr=msg;V()};
+    if(inClaude()){window.claude.use('sample').then(function(sample){if(!sample)throw {code:'not_granted'};return sample(p,{modelTier:'complex',cache:false})}).then(function(r){done(r.text)},function(e){fail(e&&e.code==='rate_limited'?'Claude is busy. Try again in a few minutes.':'The report did not finish. Try again.')});return}
+    srv('/review',{prompt:p,max_tokens:3500}).then(function(j){done(j.text)},function(e){fail(e&&e.status===501?'Reports need the Anthropic key on your server.':srvErr(e,'Claude'))});
+  }
+  function applyR(r,type,k){
+    if(type==='tm'){var v=Core.rnd(+r.tm[k],inc(),'near'),cur=+S.tm[k];if(v>0&&cur&&Math.abs(v-cur)/cur<=0.15){S.tm[k]=v;r.applied['tm-'+k]=true}}
+    else if(type==='sub'){var s=r.subs[k];if(s){var cid='c_'+k.replace(/[^a-z0-9]/gi,'');S.custom[cid]={n:s.n,sets:s.sets,reps:s.reps,rest:60,load:true,eq:'other',cue:s.cue,why:s.why,sub:true,custom:true,for:k,main:k.indexOf('main-')===0?'own':undefined};EX[cid]=S.custom[cid];S.subs[k]=cid;r.applied['sub-'+k]=true}}
+    else if(type==='tgt'){Object.keys(r.targets).forEach(function(m){S.ctarget[m]=Object.assign({t:Date.now(),from:r.date},r.targets[m])});r.applied.tgt=true}
+  }
+  function vReports(){
+    var rs=(S.reports||[]).slice().sort(function(a,b){return b.t-a.t}),can=inClaude()||!!apiCfg().code;
+    var h='<h1>Reports</h1><p class="sub">Every report is kept here: the Sunday review and any you create yourself. Suggested changes become buttons; nothing changes until you tap one.</p>';
+    h+='<div class="card" style="margin-top:14px"><button class="cta" type="button" data-act="rnew"'+(U.rbusy||!can?' disabled':'')+'>'+(U.rbusy?'Writing your report…':'Create a report now')+'</button><div class="note">'+(U.rbusy?'An in-depth report takes 20–40 seconds.':can?'An in-depth report on your training so far, written now. About 2–5 cents each.':'Add your server access code in Settings to create reports.')+'</div>'+(U.rerr?'<div class="note" style="color:var(--sig)">'+esc(U.rerr)+'</div>':'')+'</div>';
+    if(!rs.length)h+='<div class="card" style="margin-top:10px"><div class="note" style="margin:0">No reports yet. Your first Sunday review arrives on Sunday evening.</div></div>';
+    h+='<div class="stack" style="margin-top:10px">';
+    rs.forEach(function(r){var open=U.ropen===r.id,first=(r.sections[0]&&r.sections[0].t||r.text||'').slice(0,140);
+      h+='<div class="card rep"'+(r.seen?'':' style="border-color:var(--sig)"')+'><button type="button" class="rh" data-act="ropen" data-id="'+r.id+'" style="border:0;background:none;padding:0;width:100%;text-align:left;color:inherit" aria-expanded="'+open+'"><span><span class="note" style="margin:0">'+new Date(r.t).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'})+'</span><h3>'+esc(r.title)+'</h3></span><span class="kind'+(r.kind==='weekly'?' weekly':'')+'">'+(r.kind==='weekly'?'Weekly':'On demand')+'</span></button>';
+      if(!open){h+='<div class="note">'+esc(first)+(first.length>=140?'…':'')+'</div></div>';return}
+      if(r.sections.length)r.sections.forEach(function(s){h+='<div class="rsec"><h4>'+esc(s.h)+'</h4><p>'+esc(s.t)+'</p></div>'});
+      else if(r.text)h+='<div class="rsec"><p>'+esc(r.text)+'</p></div>';
+      if(r.changes.length)h+='<div class="rsec"><h4>Changes to make</h4><ul class="dl">'+r.changes.map(function(c){return '<li>'+esc(c)+'</li>'}).join('')+'</ul></div>';
+      var tmK=Object.keys(r.tm||{}).filter(function(k){var v=+r.tm[k],c=+S.tm[k];return v>0&&c&&Math.abs(v-c)/c<=0.15&&Math.abs(v-c)>0.01||r.applied['tm-'+k]});
+      if(tmK.length){h+='<div class="rsec"><h4>Training maxes</h4>';tmK.forEach(function(k){var ap=r.applied['tm-'+k];h+='<button class="btn w'+(ap?' applied':'')+'" type="button" data-act="rapply" data-r="'+r.id+'" data-type="tm" data-k="'+k+'" style="margin-top:6px"'+(ap?' disabled':'')+'>'+(ap?'Applied: ':'Set ')+Rules.NAMES[k].toLowerCase()+' to '+fmt(Core.rnd(+r.tm[k],inc(),'near'))+' kg'+(ap?'':' (now '+fmt(S.tm[k])+')')+'</button>'});h+='</div>'}
+      var sk=Object.keys(r.subs||{});
+      if(sk.length){h+='<div class="rsec"><h4>Swaps for pain</h4>';sk.forEach(function(k){var s=r.subs[k],ap=r.applied['sub-'+k],on=k.indexOf('main-')===0?Rules.NAMES[k.slice(5)]:EX[k]?EX[k].n:k;
+        h+='<div class="card" style="margin-top:6px"><div class="note" style="margin:0">Instead of '+esc(on)+'</div><b>'+esc(s.n)+'</b><div class="note">'+esc(s.sets+' × '+s.reps+'. '+s.cue)+'</div>'+(s.why?'<div class="note">'+esc(s.why)+'</div>':'')+'<button class="btn w'+(ap?' applied':'')+'" type="button" data-act="rapply" data-r="'+r.id+'" data-type="sub" data-k="'+k+'" style="margin-top:6px"'+(ap?' disabled':'')+'>'+(ap?'Swap in use':'Use this swap')+'</button></div>'});h+='</div>'}
+      var tk=Object.keys(r.targets||{});
+      if(tk.length){h+='<div class="rsec"><h4>Cardio targets for next time</h4><ul class="dl">'+tk.map(function(m){return '<li><b>'+(m==='zone2'?'Zone 2':m==='int'?'Intervals':'Sprints')+':</b> '+esc(tgtText(r.targets[m]))+'</li>'}).join('')+'</ul><button class="btn w'+(r.applied.tgt?' applied':'')+'" type="button" data-act="rapply" data-r="'+r.id+'" data-type="tgt" data-k="" style="margin-top:6px"'+(r.applied.tgt?' disabled':'')+'>'+(r.applied.tgt?'Targets in use on cardio days':'Use these cardio targets')+'</button></div>'}
+      h+='<div style="margin-top:12px"><button class="linkb" type="button" data-act="ropen" data-id="'+r.id+'">Close report</button></div></div>';
+    });
+    return h+'</div>';
+  }
+  function tgtText(t){return [t.w?t.w+' W avg':'',t.lvl?'level '+t.lvl:'',t.speed?t.speed+' km/h':'',t.incline!=null&&t.incline!==''?'incline '+t.incline+'%':'',t.hrLo&&t.hrHi?'HR '+t.hrLo+'–'+t.hrHi:'',t.min?t.min+' min':''].filter(Boolean).join(', ')+(t.note?'. '+t.note:'')}
   function vReview(){
     var h='<h1>Review</h1><p class="sub">Checks your lifts against each other and your bodyweight, and adds accessory work where something lags. It updates every time you log.</p>';
     var trend=A.trend?(A.trend.pct>=0?'+':'')+Math.round(A.trend.pct*1000)/10+'% over '+A.trend.days+' days':'Log weekly to see a trend';
@@ -1442,19 +1555,8 @@ var INFO={
     if(notes.length){h+='<h2>Your pain notes</h2><div class="card"><div class="sets">';
       notes.forEach(function(p){h+='<div class="set" style="grid-template-columns:1fr auto;align-items:start"><span>'+esc(p.part)+(p.side?' ('+esc(p.side.toLowerCase())+')':'')+' · '+esc(p.ex||'')+'<br><span class="p">'+esc(p.note||'')+(p.trig?' Caused by: '+esc(p.trig):'')+'</span></span><span class="w" style="color:'+(p.v>=4?'var(--sig)':'var(--ink)')+'">'+p.v+'/10</span></div>'});
       h+='</div><div class="note">These go into the Sunday review so Claude can suggest swaps that suit them.</div></div>'}
-    if(S.remote){var rr=S.remote,sg=tmSuggest();
-      h+='<h2>Claude’s weekly review</h2><div class="card" style="border-color:var(--sig)"><div class="note" style="margin:0">'+esc(rr.date?'Written '+rr.date:'')+'</div><div class="claude">'+esc(rr.text)+'</div>';
-      if(rr.notes.length)h+='<div class="note" style="color:var(--ink)">Suggested changes:</div><ul style="margin:6px 0 0 18px;padding:0;line-height:1.5">'+rr.notes.map(function(n){return '<li>'+esc(n)+'</li>'}).join('')+'</ul>';
-      sg.forEach(function(s){h+='<div style="margin-top:10px"><button class="btn w" type="button" data-act="rtm" data-k="'+s.k+'" data-v="'+s.v+'">Set '+Rules.NAMES[s.k].toLowerCase()+' training max to '+fmt(s.v)+' kg (now '+fmt(s.cur)+')</button></div>'});
-      Object.keys(rr.subs||{}).forEach(function(k){if(rr.applied['sub-'+k])return;var v=rr.subs[k],on=k.indexOf('main-')===0?Rules.NAMES[k.slice(5)]:EX[k]?EX[k].n:k;
-        h+='<div class="card" style="margin-top:10px"><div class="note" style="margin:0">Swap for '+esc(on)+'</div><b style="font:700 20px var(--display);text-transform:uppercase">'+esc(v.n)+'</b><div class="note">'+esc(v.sets+' × '+v.reps+'. '+v.cue)+'</div>'+(v.why?'<div class="note">'+esc(v.why)+'</div>':'')+'<button class="btn w" type="button" data-act="rsub" data-k="'+k+'" style="margin-top:8px">Use this swap</button></div>'});
-      h+='</div>';
-      if(!rr.seen){rr.seen=true;setTimeout(save,0)}
-    }else if(ghReady())h+='<h2>Claude’s weekly review</h2><div class="card"><div class="note" style="margin:0">Claude reviews your backed-up log every Sunday night. The review appears here, with any suggested changes as buttons.</div></div>';
-    if(inClaude()||apiCfg().code){
-      h+='<h2>Ask Claude now</h2><div class="card"><div class="note" style="margin:0">An instant coach-style read of your numbers. '+(inClaude()?'Uses your Claude account.':'Needs an Anthropic key on your server; otherwise rely on the Sunday review.')+'</div>'+
-        '<div style="margin-top:10px"><button class="cta" type="button" data-act="claude"'+(U.cl&&U.cl.busy?' disabled':'')+'>'+(U.cl&&U.cl.busy?'Reviewing…':'Review my training')+'</button></div>'+(U.cl&&U.cl.err?'<div class="note" style="color:var(--sig)">'+esc(U.cl.err)+'</div>':'')+
-        '<div class="claude" id="cltext" aria-live="polite"></div></div>'}
+    var lr=(S.reports||[]).slice().sort(function(p,q){return q.t-p.t})[0];
+    h+='<h2>Reports</h2><div class="card"><div class="note" style="margin:0">'+(lr?'Latest: <b>'+esc(lr.title)+'</b>, '+new Date(lr.t).toLocaleDateString('en-AU',{day:'numeric',month:'short'})+'.':'Your Sunday review and any reports you create are kept in the Reports tab.')+'</div><div style="margin-top:10px"><button class="btn w" type="button" data-act="tab" data-v="reports">Open Reports</button></div></div>';
     return h;
   }
   function claudePrompt(){
@@ -1610,7 +1712,7 @@ var INFO={
     var a=b.dataset.act,d=b.dataset,D=U.day?dayById(U.day):null,lg=D&&U.view==='session'?getLog(D.id):null;
     if(a==='tstop'){stopTimer();return}
     if(a==='tnext'){if(T.i<T.ph.length-1)begin(T.i+1);else stopTimer();return}
-    if(a==='tab'){U.view=d.v;U.msg='';U.ask=false;if(d.v==='review')ghReview(false);if(d.v==='today')setTimeout(function(){whSync(false)},0)}
+    if(a==='tab'){U.view=d.v;U.msg='';U.ask=false;if(d.v==='review'||d.v==='reports')ghReview(false);if(d.v==='today')setTimeout(function(){whSync(false)},0)}
     else if(a==='start'){LIFTS.forEach(function(L){S.tm[L.k]=Core.rnd(exEst(L.k)*.9,inc(),'near')});
       var ob=parseFloat(U.obw);if(ob>0)S.bw.push({d:today(),w:ob});S.onboarded=true;U.view='today'}
     else if(a==='open'){U.day=d.d;U.view='session';U.msg='';U.copied='';U.tedit=false}
@@ -1641,6 +1743,9 @@ var INFO={
     else if(a==='xbg'){if(ev.target===b)U.xw=null;else return}
     else if(a==='xsave'){var f2=U.xw,rec2={id:f2.id||('x'+Date.now()),d:f2.d,type:f2.type,start:f2.start||'',min:num(f2.min),dist:num(f2.dist),hr:num(f2.hr),rpe:f2.rpe||null,note:String(f2.note||'').slice(0,500)};
       S.extra=(S.extra||[]).filter(function(e){return e.id!==rec2.id}).concat([rec2]).sort(function(p,q){return p.d<q.d?-1:1});U.xw=null;setTimeout(function(){ghBackup(false)},300)}
+    else if(a==='rnew'){runReport();return}
+    else if(a==='ropen'){U.ropen=U.ropen===d.id?null:d.id;var rr2=(S.reports||[]).filter(function(x){return x.id===d.id})[0];if(rr2)rr2.seen=true}
+    else if(a==='rapply'){var rr3=(S.reports||[]).filter(function(x){return x.id===d.r})[0];if(rr3)applyR(rr3,d.type,d.k)}
     else if(a==='undo'){var u=S.undo;if(u){S.tm[u.k]=u.from;S.undo=null;U.msg='Training max put back to '+fmt(u.from)+' kg.';U.undoShow=false}}
     else if(a==='xs'){
       var arr2=lg.ex[d.id]=lg.ex[d.id]||[],j=+d.i;arr2[j]=!arr2[j];touch(lg);
