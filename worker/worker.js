@@ -101,6 +101,31 @@ export default {
     }
 
     // Read a cardio machine screen from a photo (needs ANTHROPIC_API_KEY)
+    // Read a blood test report (PDF or photo) into a list of markers (needs ANTHROPIC_API_KEY)
+    if (path === "/labs/read") {
+      if (!env.ANTHROPIC_API_KEY) return reply(501, { error: "Reading lab reports is not set up on this server." });
+      const data = String(body.file || ""), media = String(body.media || "");
+      if (!data || data.length > 24000000 || !/^[A-Za-z0-9+/=]+$/.test(data)) return reply(400, { error: "Missing or oversized file." });
+      if (!/^(application\/pdf|image\/(jpeg|png|webp))$/.test(media)) return reply(400, { error: "Send a PDF or a photo." });
+      const ask = "This is a blood test (pathology) report. Extract every result that is clearly printed. Reply with JSON only, no other text, in this shape: " +
+        "{\"date\": \"YYYY-MM-DD\" (collection date if shown, else report date, else null), \"lab\": \"lab name or null\", \"markers\": [{\"name\": \"marker name as printed\", \"key\": \"short lowercase standard name, e.g. total testosterone, free testosterone, oestradiol, shbg, haematocrit, haemoglobin, psa, lh, fsh, prolactin, ferritin, iron, vitamin d, hba1c, glucose, insulin, total cholesterol, ldl, hdl, triglycerides, apob, alt, ast, ggt, creatinine, egfr, urea, crp, tsh, free t4, cortisol\", " +
+        "\"value\": number or null, \"text\": \"the value as printed if not a plain number, else empty\", \"unit\": \"unit as printed\", \"low\": number or null, \"high\": number or null (reference range), \"flag\": \"H, L or empty, as marked on the report or by comparing with the range\"}]}. " +
+        "Copy numbers exactly as printed; never guess. Do not interpret or give medical advice.";
+      const block = media === "application/pdf" ? { type: "document", source: { type: "base64", media_type: "application/pdf", data } } : { type: "image", source: { type: "base64", media_type: media, data } };
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model: MODEL, max_tokens: 6000, messages: [{ role: "user", content: [block, { type: "text", text: ask }] }] }),
+      });
+      if (!r.ok) return reply(r.status === 429 ? 429 : r.status === 413 ? 413 : 502, { error: "Anthropic API error " + r.status });
+      const j = await r.json();
+      const t = (j.content || []).filter((c) => c.type === "text").map((c) => c.text).join("");
+      const m = t.match(/\{[\s\S]*\}/);
+      let out = null; try { out = m ? JSON.parse(m[0]) : null; } catch (e) { out = null; }
+      if (!out || !Array.isArray(out.markers)) return reply(502, { error: "Could not read that report." });
+      return reply(200, out);
+    }
+
     if (path === "/cardio/read") {
       if (!env.ANTHROPIC_API_KEY) return reply(501, { error: "Photo reading is not set up on this server." });
       const img = String(body.image || "");

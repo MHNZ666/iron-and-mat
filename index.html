@@ -767,7 +767,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='5.2.2 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='5.3 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -781,7 +781,7 @@ var INFO={
     ex:{squat:{w:100,r:5},bench:{w:70,r:5},dead:{w:140,r:5},press:{w:47.5,r:5}},
     tm:{},cycle:1,week:0,logs:{},hist:[],loads:{},alts:{},pain:[],
     h:'',bw:[],pu:'',loadHist:{},dismiss:{},claude:null,reviewDue:false,u:0,
-    step:5,subs:{},custom:{},cardio:{},lnote:{},undo:null,wh:[],whoop:null,whw:[],extra:[],reports:[],ctarget:{},rw:{lvl:1,ok:0,hist:[]},meas:[],issues:[],goals:{},events:[]}}
+    step:5,subs:{},custom:{},cardio:{},lnote:{},undo:null,wh:[],whoop:null,whw:[],extra:[],reports:[],ctarget:{},rw:{lvl:1,ok:0,hist:[]},meas:[],issues:[],goals:{},events:[],labs:[],doses:[],trt:{name:'Testosterone',unit:'mg'}}}
   /* ---------- data safety: nothing is overwritten without a copy being kept first ---------- */
   var SNAPKEY='iron-mat-snapshots',Safe={blocked:false,warn:''};
   function nLogs(o){var n=0;Object.keys(o&&o.logs||{}).forEach(function(k){var l=o.logs[k];if(l&&(l.done||l.t0))n++});return n}
@@ -1636,9 +1636,9 @@ var INFO={
   }
   function cf(key,f,label,v){return '<label class="f">'+label+'<input type="number" inputmode="decimal" step="any" data-cf="'+f+'" data-k="'+key+'" value="'+(v==null?'':esc(v))+'"></label>'}
   function cardioEntry(key,d,kind){var c=S.cardio[key]=S.cardio[key]||{};c.d=c.d||today();c.day=d.id;c.kind=kind;c.mode=kind==='sprint'?'sprint':Prog.condMode(S.week)==='intervals'?'int':'zone2';c.c=S.cycle;c.wk=S.week;return c}
-  function shrink(file){return new Promise(function(res,rej){
+  function shrink(file,max){return new Promise(function(res,rej){
     var url=URL.createObjectURL(file),img=new Image();
-    img.onload=function(){var m=1280,s=Math.min(1,m/Math.max(img.width,img.height)),cv=document.createElement('canvas');cv.width=Math.round(img.width*s);cv.height=Math.round(img.height*s);
+    img.onload=function(){var m=max||1280,s=Math.min(1,m/Math.max(img.width,img.height)),cv=document.createElement('canvas');cv.width=Math.round(img.width*s);cv.height=Math.round(img.height*s);
       cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);URL.revokeObjectURL(url);res(cv.toDataURL('image/jpeg',.72).split(',')[1])};
     img.onerror=function(){URL.revokeObjectURL(url);rej()};img.src=url})}
   function onPhoto(input){
@@ -1766,6 +1766,76 @@ var INFO={
     }).catch(function(){}).then(function(){WH.back=false});
   }
   /* ---------- health and life changes: what changed, and the numbers before and since ---------- */
+  /* ---------- bloodwork: upload the lab PDF or a photo; Claude reads the markers; trends across tests ---------- */
+  var KEYM=['total testosterone','free testosterone','oestradiol','shbg','haematocrit','haemoglobin','psa','lh','fsh','prolactin','ferritin','iron','vitamin d','hba1c','glucose','insulin','total cholesterol','ldl','hdl','triglycerides','apob','alt','ast','ggt','creatinine','egfr','crp','tsh','cortisol'];
+  var LAB={busy:false,msg:'',draft:null,open:null};
+  function readB64(file){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(String(r.result).split(',')[1])};r.onerror=rej;r.readAsDataURL(file)})}
+  function onLabFile(input){
+    var file=input.files&&input.files[0];if(!file)return;input.value='';
+    if(!apiCfg().code){LAB.msg='Enter your server access code in Settings first.';V();return}
+    var pdf=/pdf/i.test(file.type)||/\.pdf$/i.test(file.name);
+    if(pdf&&file.size>15*1024*1024){LAB.msg='That PDF is over 15 MB. Try a smaller export, or a photo of each page.';V();return}
+    LAB.busy=true;LAB.msg='Reading your results… this takes 20 to 60 seconds.';V();
+    (pdf?readB64(file):shrink(file,2200)).then(function(b64){
+      return srv('/labs/read',{file:b64,media:pdf?'application/pdf':'image/jpeg'}).then(function(j){
+        var ms=(j.markers||[]).map(function(m){return {name:String(m.name||'').slice(0,60),key:String(m.key||m.name||'').toLowerCase().slice(0,40),value:num(m.value),text:String(m.text||'').slice(0,40),unit:String(m.unit||'').slice(0,20),low:num(m.low),high:num(m.high),flag:/^[HL]$/i.test(m.flag||'')?String(m.flag).toUpperCase():''}}).filter(function(m){return m.name&&(m.value!=null||m.text)});
+        LAB.draft={id:'l'+Date.now().toString(36),d:/^\d{4}-\d\d-\d\d$/.test(j.date||'')?j.date:today(),lab:String(j.lab||'').slice(0,60),markers:ms,b64:b64,pdf:pdf};
+        LAB.msg=ms.length?'Check the results below, then tap Save.':'No results could be read from that file.';
+      });
+    }).catch(function(e){LAB.msg=e&&e.status===413?'That file is too large to read.':srvErr(e,'the lab reader')}).then(function(){LAB.busy=false;V()});
+  }
+  function labSave(){
+    var d=LAB.draft;if(!d)return;var dt=$('labd'),lb=$('labl');if(dt&&dt.value)d.d=dt.value;if(lb)d.lab=lb.value.trim().slice(0,60);
+    d.markers.forEach(function(m,i){var el=$('lv-'+i);if(el&&el.value!==''){var v=parseFloat(el.value);if(!isNaN(v))m.value=v}});
+    var rec={id:d.id,d:d.d,lab:d.lab,markers:d.markers};S.labs=S.labs||[];S.labs.push(rec);S.labs.sort(function(a,b){return a.d<b.d?-1:1});
+    if(ghReady()){var path='labs/'+d.d+'-'+d.id+(d.pdf?'.pdf':'.jpg'),b64=d.b64;
+      ghReq('GET',null,path).then(function(cur){return ghReq('PUT',{message:'Lab results '+d.d,content:b64,sha:cur&&cur.sha||undefined},path)}).then(function(){rec.file=path;save()},function(){})}
+    LAB.draft=null;LAB.msg='Saved.';
+  }
+  function flagOf(m){if(m.flag)return m.flag;if(m.value==null)return '';if(m.high!=null&&m.value>m.high)return 'H';if(m.low!=null&&m.value<m.low)return 'L';return ''}
+  function markerHist(key){var out=[];(S.labs||[]).forEach(function(t){t.markers.forEach(function(m){if(m.key===key&&m.value!=null)out.push({d:t.d,v:m.value,unit:m.unit,low:m.low,high:m.high,flag:flagOf(m)})})});return out}
+  function labsCard(){
+    var h='<div class="note" style="margin:0">Upload the PDF from your lab, or a photo of each page. Claude reads every result; you check them before saving. The file is kept in your private GitHub backup. This tracks numbers; it is not medical advice.</div>'+
+      '<label class="btn w" style="display:block;text-align:center;margin-top:10px'+(LAB.busy?';opacity:.5;pointer-events:none':'')+'">'+(LAB.busy?'Reading…':'Upload lab results (PDF or photo)')+'<input type="file" accept="application/pdf,image/*" data-labfile="1" hidden></label>'+(LAB.msg?'<div class="note" aria-live="polite">'+esc(LAB.msg)+'</div>':'');
+    var dr=LAB.draft;
+    if(dr){h+='<div class="card" style="margin-top:10px;border-color:var(--sig)"><div class="fields" style="grid-template-columns:1fr 1fr"><label class="f">Test date<input type="date" id="labd" value="'+esc(dr.d)+'"></label><label class="f">Lab<input type="text" id="labl" value="'+esc(dr.lab)+'" style="font-size:15px;text-align:left"></label></div>'+
+      '<div style="overflow-x:auto"><table class="st"><tr><th>Marker</th><th>Result</th><th>Range</th></tr>'+dr.markers.map(function(m,i){var f=flagOf(m);return '<tr><td>'+esc(m.name)+'</td><td>'+(m.value!=null?'<input type="number" inputmode="decimal" id="lv-'+i+'" value="'+m.value+'" style="width:80px;font-size:14px;padding:4px">':esc(m.text))+' '+esc(m.unit)+(f?' <b style="color:var(--sig)">'+f+'</b>':'')+'</td><td>'+(m.low!=null||m.high!=null?(m.low!=null?m.low:'')+'–'+(m.high!=null?m.high:''):'')+'</td></tr>'}).join('')+'</table></div>'+
+      '<div class="row" style="margin-top:10px;gap:8px"><button class="cta" type="button" data-act="labsave"'+(dr.markers.length?'':' disabled')+'>Save results</button><button class="btn s" type="button" data-act="labdiscard">Discard</button></div></div>'}
+    var L=(S.labs||[]).slice().sort(function(a,b){return a.d<b.d?1:-1});
+    if(L.length){
+      // key markers: latest value, range, and change since the previous test
+      var keys=KEYM.filter(function(k){return markerHist(k).length});
+      if(keys.length)h+='<div style="overflow-x:auto;margin-top:10px"><table class="st"><tr><th>Key marker</th><th>Latest</th><th>Range</th><th>Change</th></tr>'+keys.map(function(k){var hs=markerHist(k),l=hs[hs.length-1],pv=hs.length>1?hs[hs.length-2]:null;
+        return '<tr><td>'+esc(k.charAt(0).toUpperCase()+k.slice(1))+'</td><td>'+l.v+' '+esc(l.unit)+(l.flag?' <b style="color:var(--sig)">'+l.flag+'</b>':'')+'</td><td>'+(l.low!=null||l.high!=null?(l.low!=null?l.low:'')+'–'+(l.high!=null?l.high:''):'')+'</td><td>'+(pv?(l.v-pv.v>=0?'+':'')+Math.round((l.v-pv.v)*100)/100:'–')+'</td></tr>'}).join('')+'</table></div>';
+      L.forEach(function(t){var fl=t.markers.filter(function(m){return flagOf(m)}).length,op=LAB.open===t.id;
+        h+='<div class="card" style="margin-top:8px"><div class="row"><button type="button" class="linkb" data-act="labopen" data-id="'+t.id+'" style="text-align:left"><b>'+new Date(t.d+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})+'</b>'+(t.lab?' · '+esc(t.lab):'')+'</button><span class="note" style="margin:0">'+t.markers.length+' results'+(fl?' · <span style="color:var(--sig)">'+fl+' outside range</span>':'')+'</span></div>';
+        if(op)h+='<div style="overflow-x:auto"><table class="st">'+t.markers.map(function(m){var f=flagOf(m);return '<tr><td>'+esc(m.name)+'</td><td>'+(m.value!=null?m.value:esc(m.text))+' '+esc(m.unit)+(f?' <b style="color:var(--sig)">'+f+'</b>':'')+'</td><td>'+(m.low!=null||m.high!=null?(m.low!=null?m.low:'')+'–'+(m.high!=null?m.high:''):'')+'</td></tr>'}).join('')+'</table></div><button class="linkb" type="button" data-act="labdel" data-id="'+t.id+'">'+(U.labdel===t.id?'Tap again to delete this test':'Delete this test')+'</button>';
+        h+='</div>'});
+    }
+    return h;
+  }
+  /* ---------- TRT log: record each dose; weekly total, usual interval and next due date. It never suggests a dose. ---------- */
+  var SITES=['Glute L','Glute R','Delt L','Delt R','Quad L','Quad R','Abdomen','Other'],TRTF={site:null};
+  function doseList(){return (S.doses||[]).slice().sort(function(a,b){return a.t-b.t})}
+  function trtStats(){
+    var D=doseList(),now=Date.now(),wk0=new Date(mondayOf(today())+'T00:00:00').getTime(),u=(S.trt||{}).unit||'mg';
+    var thisWk=D.filter(function(x){return x.t>=wk0}).reduce(function(s,x){return s+(+x.amount||0)},0);
+    var last28=D.filter(function(x){return x.t>=now-28*864e5}).reduce(function(s,x){return s+(+x.amount||0)},0);
+    var iv=[];for(var i=1;i<D.length;i++)iv.push((D[i].t-D[i-1].t)/864e5);iv=iv.slice(-6).sort(function(a,b){return a-b});
+    var med=iv.length?iv[Math.floor(iv.length/2)]:null,last=D[D.length-1];
+    var wks=D.length?Math.max(1,Math.min(4,(now-D[0].t)/(7*864e5))):4;return {u:u,thisWk:Math.round(thisWk*100)/100,avgWk:Math.round(last28/wks*100)/100,interval:med!=null?Math.round(med*10)/10:null,next:last&&med?last.t+med*864e5:null,last:last};
+  }
+  function trtCard(){
+    var st=trtStats(),T=S.trt||{name:'Testosterone',unit:'mg'},last=st.last,lastAmt=last?last.amount:'',now=new Date();
+    var h='<div class="note" style="margin:0">A record of what you take, as prescribed. The app never suggests a dose; take any questions to your prescriber.</div>'+
+      '<div class="fields" style="grid-template-columns:2fr 1fr;margin-top:10px"><label class="f">Medication<input type="text" id="trtn" value="'+esc(T.name||'')+'" style="font-size:15px;text-align:left"></label><label class="f">Unit<input type="text" id="trtu" value="'+esc(T.unit||'mg')+'" style="font-size:15px;text-align:left"></label></div>'+
+      '<div class="fields" style="grid-template-columns:1.2fr 1fr 1fr;margin-top:10px"><label class="f">Date<input type="date" id="trtd" value="'+today()+'"></label><label class="f">Time<input type="time" id="trtt" value="'+hhmm(now.getTime())+'"></label><label class="f">Amount ('+esc(T.unit||'mg')+')<input type="number" inputmode="decimal" id="trta" value="'+esc(lastAmt)+'"></label></div>'+
+      '<div class="note" style="margin:10px 0 0">Site'+(last&&last.site?' (last: '+esc(last.site)+')':'')+'</div><div class="chips">'+SITES.map(function(s){return '<button type="button" class="chip" data-act="trtsite" data-v="'+s+'" aria-pressed="'+(TRTF.site===s)+'">'+s+'</button>'}).join('')+'</div>'+
+      '<label class="f" style="margin-top:8px">Note (optional)<input type="text" id="trtnote" style="font-size:15px;text-align:left"></label><div style="margin-top:10px"><button class="btn w" type="button" data-act="trtlog">Log dose</button></div>';
+    if(last){h+='<div class="note" style="color:var(--ink)">This week: <b>'+st.thisWk+' '+esc(st.u)+'</b> · last 4 weeks: '+st.avgWk+' '+esc(st.u)+' a week'+(st.interval?' · usually every '+st.interval+' days':'')+(st.next?' · next due about <b>'+new Date(st.next).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+'</b>':'')+'</div>';
+      h+='<div style="overflow-x:auto"><table class="st"><tr><th>When</th><th>Amount</th><th>Site</th><th></th></tr>'+doseList().slice(-8).reverse().map(function(x){return '<tr><td>'+new Date(x.t).toLocaleString('en-AU',{weekday:'short',day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})+'</td><td>'+x.amount+' '+esc(x.unit)+'</td><td>'+esc(x.site||'')+(x.note?' · '+esc(x.note):'')+'</td><td><button class="linkb" type="button" data-act="trtdel" data-id="'+x.id+'">'+(U.trtdel===x.id?'Sure?':'Delete')+'</button></td></tr>'}).join('')+'</table></div>'}
+    return h;
+  }
   function evCompare(ev){
     var W=S.wh||[],pre=W.filter(function(x){return x.d<ev.d&&x.d>=addDays(ev.d,-21)}),post=W.filter(function(x){return x.d>=ev.d});
     var F=[['rec','Recovery','%',1],['hrv','HRV','ms',1],['rhr','Resting HR','bpm',-1],['sleep','Sleep performance','%',1],['sleepH','Hours asleep','h',1],['eff','Sleep efficiency','%',1],['resp','Breathing rate asleep','/min',0],['dist','Sleep disturbances','',-1],['spo2','Blood oxygen','%',1],['deep','Deep sleep','h',1]];
@@ -2125,6 +2195,8 @@ var INFO={
     var cds=Object.keys(S.cardio).map(function(k){return S.cardio[k]}).filter(function(c){return inR(c.d)});if(cds.length)L.push('Cardio machine data: '+cds.map(function(c){return c.d+' '+c.mode+(c.machine?' '+c.machine:'')+(c.min?' '+c.min+' min':'')+(c.w?' '+c.w+' W':'')+(c.hr?' avg HR '+c.hr:'')}).join('; ')+'.');
     var pn=S.pain.filter(function(x){return inR(x.d)});L.push('Pain flags in this period: '+(pn.map(function(x){return x.d+' '+x.part+(x.side?' '+x.side:'')+' '+x.v+'/10 on '+x.ex+(x.addr?' (addressing)':' (short-term)')+(x.trig?', caused by '+x.trig:'')+(x.note?': '+x.note:'')}).join('; ')||'none')+'.');
     var iss=(S.issues||[]).filter(function(is){return is.active||inR(is.resolved)});if(iss.length)L.push('Issues being addressed: '+iss.map(function(is){var wa=weekAvgs(is),dr=issueDrill(is);return is.part+(is.side?' '+is.side:'')+' since '+is.start+' (linked: '+is.exNames.join(', ')+'), drill '+(dr?EX[dr].n+' level '+((is.lvl||0)+1):'none (knee: warm-up covers it)')+', weekly pain '+wa.map(function(x){return x.v}).join(' > ')+' ('+trendWord(wa)+')'+(is.active?'':', resolved '+is.resolved)}).join('; ')+'.');
+    var dz=(S.doses||[]).filter(function(x){return inR(ymdOf(x.t))});if(dz.length)L.push('Doses logged in this period ('+((S.trt&&S.trt.name)||'TRT')+', as prescribed): '+dz.map(function(x){return ymdOf(x.t)+' '+hhmm(x.t)+' '+x.amount+' '+x.unit+(x.site?' '+x.site:'')}).join('; ')+'.');
+    var lz=(S.labs||[]).filter(function(t){return inR(t.d)});if(lz.length)L.push('Blood tests in this period: '+lz.map(function(t){return t.d+': '+t.markers.map(function(m){return m.name+' '+(m.value!=null?m.value:m.text)+' '+m.unit+(flagOf(m)?' '+flagOf(m):'')}).join(', ')}).join(' || ')+'.');
     var bws=(S.bw||[]).filter(function(x){return inR(x.d)});L.push('Bodyweight in this period: '+(bws.map(function(x){return x.d+' '+x.w+' kg'+(x.fat?' ('+x.fat+'% fat)':'')+(x.src?' via '+x.src:'')}).join('; ')||'no new weigh-in; latest '+bwNow()+' kg')+'.');
     return L;
   }
@@ -2237,6 +2309,7 @@ var INFO={
       '<label class="f">Pull-ups<input type="number" inputmode="numeric" data-pu="1" value="'+esc(S.pu)+'" placeholder="best"></label></div>'+
       '<div style="margin-top:10px"><button class="btn w" type="button" data-act="bwlog">Log today’s bodyweight</button></div><div class="note">'+trend+(whCfg().refresh?' · Bodyweight also syncs from WHOOP.':'')+'</div>'+
       (S.bw.length>=2?line(S.bw.slice(-20).map(function(x){return +x.w}),null,'kg','Bodyweight over time'):'')+'</div>';
+    h+='<h2>Bloodwork</h2><div class="card">'+labsCard()+'</div><h2>'+esc((S.trt&&S.trt.name)||'Medication')+' log</h2><div class="card">'+trtCard()+'</div>';
     h+='<h2>Health and life changes</h2><div class="card">'+eventsCard()+'</div>';
     h+='<h2>Rehab</h2><div class="stack">'+rehabCard()+'</div>';
     h+='<h2>Muscle growth</h2><div class="card">'+growthCard()+'</div><h2>Measurements</h2><div class="card">'+measCard()+'</div>';
@@ -2302,6 +2375,8 @@ var INFO={
         return logDate(x.l)+' '+x.id+': '+ss.length+' sets, avg '+fmtSec(avg(ss.map(function(s){return s.e-s.s})))+' per set'+(ss.some(function(s){return s.est})?' (estimated)':'')+(t?', top set '+t.w+'x'+t.r+(t.max?' peak HR '+t.max+(t.rec!=null?' drop '+t.rec+' in 60s':''):''):'')+(x.l.hrSum?', session HR avg '+x.l.hrSum.avg+' max '+x.l.hrSum.max:'')+(x.l.wh&&x.l.wh.z?', WHOOP zones min '+x.l.wh.z.join('/'):'')}).join('; ')+'.');
       var hi=hrInsights();if(hi.length)lines.push('Notable heart-rate and effort changes: '+hi.join(' ')+' Report on these where they matter.');})();
     if((S.issues||[]).length)lines.push('Pain being addressed (one rehab drill per joint, rated weekly on the linked movements): '+(S.issues||[]).filter(function(is){return is.active}).map(function(is){var wa=weekAvgs(is),dr=issueDrill(is);return is.part+' since '+is.start+', drill '+(dr?EX[dr].n+' level '+((is.lvl||0)+1):'none')+', weekly pain '+wa.map(function(x){return x.v}).join(' > ')}).join('; ')+'.');
+    (function(){var L=(S.labs||[]).slice(-3);if(L.length)lines.push('Bloodwork (most recent last): '+L.map(function(t){return t.d+(t.lab?' '+t.lab:'')+': '+t.markers.filter(function(m){return KEYM.indexOf(m.key)>=0||flagOf(m)}).map(function(m){return m.name+' '+(m.value!=null?m.value:m.text)+' '+m.unit+(m.low!=null||m.high!=null?' (range '+(m.low!=null?m.low:'')+'-'+(m.high!=null?m.high:'')+')':'')+(flagOf(m)?' '+flagOf(m):'')}).join(', ')}).join(' || ')+'. Use these as context for recovery, energy, body composition and training; you are not a doctor, so flag out-of-range results only as something to discuss with their doctor.');
+      var ts=trtStats();if(ts.last)lines.push('The athlete is on prescribed '+((S.trt&&S.trt.name)||'TRT')+': this week '+ts.thisWk+' '+ts.u+', last 4 weeks average '+ts.avgWk+' '+ts.u+' a week'+(ts.interval?', usually every '+ts.interval+' days':'')+'. Never suggest changing the dose or timing; you may note patterns (for example energy or recovery across the dosing interval) and suggest raising them with the prescriber.');})();
     (S.events||[]).forEach(function(ev){var c=evCompare(ev);lines.push('Health or life change on '+ev.d+': '+ev.t+'. Averages before ('+c.npre+' days) vs since ('+c.npost+' days): '+(c.rows.map(function(r){return r.n+' '+r.a+' -> '+r.b}).join(', ')||'not enough WHOOP data yet')+(c.energy?'; session energy rating (1-3) '+(c.energy.a!=null?c.energy.a+' -> ':'')+c.energy.b:'')+'. Comment on whether the data supports what the athlete has noticed, and what it means for training.')});
     lines.push('The app\'s own rule-based flags: '+(A.findings.map(function(f){return f.title}).join('; ')||'none')+'.');
     lines.push('Tasks: 1) Name the two or three most important inefficiencies or imbalances, using height, bodyweight and recovery as context where they matter. 2) For each, give one specific fix that fits inside 45 minutes: say what to swap or trim, not only what to add. 3) Say whether any training max should change now, and why. 4) For any pain note, suggest one alternative exercise that avoids the described painful movement but trains the same area. 5) One recovery or load-management note given the mat training. Do not diagnose injuries; if any pain flag is 4 or higher, tell them to see a physio if it repeats. Be direct and specific to these numbers.');
@@ -2545,6 +2620,14 @@ var INFO={
     else if(a==='hrcon'){hrConnect();return}
     else if(a==='irate'){var is3=(S.issues||[]).filter(function(x){return x.id===d.iss})[0];if(is3){var k3=lkey(U.day);is3.ratings=is3.ratings.filter(function(r){return !(r.k===k3&&r.ex===d.ex&&!r.base)});is3.ratings.push({d:today(),v:+d.v,ex:d.ex,k:k3});rehabProgress(is3)}}
     else if(a==='iresolve'||a==='istop'){var is4=(S.issues||[]).filter(function(x){return x.id===d.id})[0];if(is4){is4.active=false;if(a==='iresolve')is4.resolved=today();else is4.stopped=today()}}
+    else if(a==='labsave'){labSave()}
+    else if(a==='labdiscard'){LAB.draft=null;LAB.msg=''}
+    else if(a==='labopen'){LAB.open=LAB.open===d.id?null:d.id}
+    else if(a==='labdel'){if(U.labdel===d.id){S.labs=(S.labs||[]).filter(function(x){return x.id!==d.id});U.labdel=null}else U.labdel=d.id}
+    else if(a==='trtsite'){TRTF.site=TRTF.site===d.v?null:d.v;var keep={a:$('trta').value,d:$('trtd').value,t:$('trtt').value,n:$('trtnote').value};V();$('trta').value=keep.a;$('trtd').value=keep.d;$('trtt').value=keep.t;$('trtnote').value=keep.n;return}
+    else if(a==='trtlog'){var am=parseFloat($('trta').value),dd=$('trtd').value,tt=$('trtt').value||'08:00';S.trt={name:$('trtn').value.trim()||'Testosterone',unit:$('trtu').value.trim()||'mg'};
+      if(am>0&&dd){var ts=new Date(dd+'T'+tt+':00').getTime();S.doses=S.doses||[];S.doses.push({id:'d'+Date.now().toString(36),t:ts,amount:am,unit:S.trt.unit,site:TRTF.site||'',note:$('trtnote').value.trim().slice(0,200)});TRTF.site=null}}
+    else if(a==='trtdel'){if(U.trtdel===d.id){S.doses=(S.doses||[]).filter(function(x){return x.id!==d.id});U.trtdel=null}else U.trtdel=d.id}
     else if(a==='evadd'){var et=$('evt').value.trim(),ed=$('evd').value;if(et&&ed){S.events=S.events||[];S.events.push({id:'e'+Date.now().toString(36),d:ed,t:et.slice(0,200)})}}
     else if(a==='evdel'){if(U.evdel===d.id){S.events=(S.events||[]).filter(function(x){return x.id!==d.id});U.evdel=null}else U.evdel=d.id}
     else if(a==='doupd'){save();fetch(location.pathname,{cache:'reload'}).catch(function(){}).then(function(){location.replace(location.pathname+'?u='+Date.now())});return}
@@ -2581,7 +2664,7 @@ var INFO={
     save();V();
   });
   document.addEventListener('keydown',function(ev){if(ev.key==='Escape'&&(U.pf||U.sw||U.info||U.xw||U.cal)){U.pf=null;U.sw=null;U.info=null;U.xw=null;U.cal=null;cancelAnimationFrame(AN.raf);V()}});
-  document.addEventListener('change',function(ev){var t=ev.target;if(t.dataset&&t.dataset.photo)onPhoto(t)});
+  document.addEventListener('change',function(ev){var t=ev.target;if(t.dataset&&t.dataset.photo)onPhoto(t);if(t.dataset&&t.dataset.labfile)onLabFile(t)});
   document.addEventListener('input',function(ev){
     var t=ev.target,v=parseFloat(t.value),D=U.day?dayById(U.day):null,lg=D&&U.view==='session'?getLog(D.id):null;
     if(t.dataset.ex){S.ex[t.dataset.ex][t.dataset.f]=t.value===''?'':v;save();onbOut()}
