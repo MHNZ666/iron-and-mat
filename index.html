@@ -146,6 +146,8 @@ svg text{fill:var(--dim);font:600 11px var(--body)}
 .pv{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:8px}
 .pv button{min-height:48px;border:1px solid var(--line);background:var(--panel2);border-radius:10px;font:700 18px var(--body)}
 .pv button[aria-pressed="true"]{background:var(--knee);color:var(--bg);border-color:var(--knee)}
+.pv.fb button{font:600 13px var(--body);min-height:44px;padding:4px}
+.pv.fb3{grid-template-columns:repeat(3,1fr)}
 .pv button.hi[aria-pressed="true"]{background:var(--sig);border-color:var(--sig)}
 .qb{width:32px;height:32px;border-radius:50%;border:1.5px solid var(--line);background:var(--panel2);color:var(--ink);font:700 16px var(--body);display:inline-grid;place-items:center;flex:none;padding:0}
 .linkb{border:0;background:none;color:var(--dim);text-decoration:underline;font:600 13px var(--body);padding:6px 0;min-height:32px}
@@ -764,7 +766,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='4.9.1 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='4.9.2 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -944,7 +946,55 @@ var INFO={
     return Object.keys(S.logs).map(function(k){var p=k.split('-'),l=S.logs[k];return {c:+p[0],wk:+p[1],id:p[2],done:l.done,skipped:l.skipped,mins:l.mins||0,t0:l.t0||0,t1:endOf(l)||0,bt:l.bt||null}})
       .filter(function(s){return s.done||s.skipped}).sort(function(a,b){return a.c-b.c||a.wk-b.wk||(a.id<b.id?-1:1)});
   }
-  function analyse(){return Rules.review({unit:S.unit,tm:S.tm,hist:S.hist,cycle:S.cycle,bw:S.bw,h:+S.h||0,pu:S.pu,pain:S.pain,sessions:sessions(),loadHist:S.loadHist,dismissed:S.dismiss,step:inc()})}
+  /* ---------- how the session felt, checked against what your numbers show ---------- */
+  var FEEL=['Too easy','Easy','About right','Hard','Too much'],ENERGY=['Low','Normal','High'],BODY=['Fresh','A bit sore','Beat up'];
+  function fbBlock(lg){
+    var f=lg.fb||{},row=function(key,list,cls){return '<div class="pv fb'+(cls||'')+'">'+list.map(function(x,i){return '<button type="button" data-act="fb" data-k="'+key+'" data-v="'+(i+1)+'" aria-pressed="'+(f[key]===i+1)+'">'+x+'</button>'}).join('')+'</div>'};
+    return '<h2>How did it feel?</h2><div class="card"><div class="note" style="margin:0">Effort</div>'+row('feel',FEEL)+
+      '<div class="note" style="margin:12px 0 0">Energy</div>'+row('energy',ENERGY,' fb3')+'<div class="note" style="margin:12px 0 0">Body</div>'+row('body',BODY,' fb3')+
+      '<div class="note">Changes are only suggested when how you felt matches your numbers: reps to spare, missed reps, WHOOP recovery and pain.</div></div>';
+  }
+  function fbSessions(){
+    // each rated session with the evidence beside it
+    return doneLogs().filter(function(x){return x.l.fb&&x.l.fb.feel}).sort(function(a,b){return a.l.t0-b.l.t0}).slice(-8).map(function(x){
+      var D=dayById(x.id),h=S.hist.filter(function(y){return y.id===x.k})[0],sur=null;
+      if(h&&h.p!=null&&h.r!=null&&!isNaN(parseInt(h.p,10)))sur=h.r-parseInt(h.p,10);
+      var date=logDate(x.l),w=(S.wh||[]).filter(function(y){return y.d===date})[0]||{},pv=0;
+      Object.keys(x.l.pain||{}).forEach(function(k){var v=+(x.l.pain[k]||{}).v||0;if(v>pv)pv=v});
+      return {k:x.k,id:x.id,lift:D&&D.lift,date:date,feel:x.l.fb.feel,energy:x.l.fb.energy||0,body:x.l.fb.body||0,sur:sur,rec:w.rec!=null?w.rec:null,sleepH:w.sleepH||null,pain:pv,mins:x.l.mins||0};
+    });
+  }
+  function avg(a){a=a.filter(function(v){return v!=null});return a.length?a.reduce(function(s,v){return s+v},0)/a.length:null}
+  function fbFindings(){
+    var F=[],ss=fbSessions();if(ss.length<2)return F;
+    // a lift that keeps feeling easy
+    ['squat','bench','dead','press'].forEach(function(k){
+      var ls=ss.filter(function(s){return s.lift===k}).slice(-3),easy=ls.filter(function(s){return s.feel<=2});if(easy.length<2)return;
+      var su=avg(easy.map(function(s){return s.sur})),nm=Rules.NAMES[k];
+      if(su!=null&&su>=3){var v=Core.rnd(S.tm[k]*1.05,inc(),'near');
+        F.push({id:'fb-easy-'+k,sev:'med',title:nm+' feels easy, and your numbers agree',detail:'You rated '+easy.length+' recent '+nm.toLowerCase()+' sessions easy and beat the target reps on the last set by '+Math.round(su*10)/10+' on average.'+(S.cycle===1?' The calibration month is already raising it as you lift.':' Suggested training max: '+v+' kg (now '+fmt(S.tm[k])+').'),act:S.cycle>1&&!A.ahead[k]&&v>S.tm[k]?{t:'tm',k:k,v:v}:null});
+      }else F.push({id:'fb-easy-no-'+k,sev:'low',title:nm+' feels easy, but the numbers say hold',detail:'You rated it easy, but your last sets had '+(su==null?'no logged reps':Math.round(su*10)/10+' reps to spare on average')+'. Holding the training max until the reps show it too.'});
+    });
+    // sessions that keep feeling hard
+    var rec=ss.slice(-4),hard=rec.filter(function(s){return s.feel>=4});
+    if(hard.length>=2){
+      var missed=hard.filter(function(s){return s.sur!=null&&s.sur<0}).length,r=avg(hard.map(function(s){return s.rec})),pain=hard.some(function(s){return s.pain>=4}),beat=hard.filter(function(s){return s.body===3}).length;
+      var why=[];if(missed)why.push('missed reps in '+missed+' of them');if(r!=null&&r<40)why.push('WHOOP recovery averaging '+Math.round(r)+'%');if(pain)why.push('pain of 4 or more');if(beat>=2)why.push('you felt beat up');
+      if(why.length&&!S.heavy)F.push({id:'fb-hard',sev:'high',title:'Sessions feel too hard, and the evidence agrees',detail:hard.length+' of your last '+rec.length+' sessions felt hard, with '+why.join(', ')+'. Suggest Heavy mat week for a week: one fewer set on the extra work, main lifts unchanged.',act:{t:'heavy',v:true}});
+      else if(!why.length){var su2=avg(hard.map(function(s){return s.sur}));
+        F.push({id:'fb-hard-no',sev:'low',title:'Sessions feel hard, but you are hitting your numbers',detail:'You rated '+hard.length+' recent sessions hard, yet hit your reps'+(su2!=null?' with '+Math.round(su2*10)/10+' to spare':'')+(r!=null?' on '+Math.round(r)+'% recovery':'')+'. No change for now. Usually this is sleep, food or mat load; the weekly review will keep watching.'})}
+    }
+    // easier weeks when heavy mode is on and things feel fine again
+    if(S.heavy){var l3=ss.slice(-3);if(l3.length===3&&l3.every(function(s){return s.feel<=3&&s.body<3})&&(avg(l3.map(function(s){return s.rec}))||60)>=50)
+      F.push({id:'fb-heavy-off',sev:'low',title:'You are coping well again',detail:'Your last 3 sessions felt fine and recovery is back up. Turn off Heavy mat week to go back to full sets.',act:{t:'heavy',v:false}})}
+    // low energy
+    var le=rec.filter(function(s){return s.energy===1});
+    if(le.length>=2){var sl=avg(le.map(function(s){return s.sleepH})),r2=avg(le.map(function(s){return s.rec}));
+      if((sl!=null&&sl<7)||(r2!=null&&r2<50))F.push({id:'fb-energy',sev:'low',title:'Low energy lines up with your recovery',detail:'Low energy in '+le.length+' recent sessions'+(sl!=null?', averaging '+Math.round(sl*10)/10+' h of sleep':'')+(r2!=null?' and '+Math.round(r2)+'% recovery':'')+'. Sleep is the first lever. The program holds steady.'})}
+    return F.filter(function(f){if(S.dismiss[f.id]){f.dismissed=true}return true});
+  }
+  function analyse(){var R=analyse0();try{A=R;R.findings=R.findings.concat(fbFindings())}catch(e){}return R}
+  function analyse0(){return Rules.review({unit:S.unit,tm:S.tm,hist:S.hist,cycle:S.cycle,bw:S.bw,h:+S.h||0,pu:S.pu,pain:S.pain,sessions:sessions(),loadHist:S.loadHist,dismissed:S.dismiss,step:inc()})}
   function addonFor(id){return A&&A.addons[id]||null}
   function blocksOf(d){
     var ad=addonFor(d.id),out=[];
@@ -1616,6 +1666,7 @@ var INFO={
       h+='<div class="optx"><div style="display:flex;justify-content:space-between;font:700 12px var(--body);letter-spacing:.12em;text-transform:uppercase;color:var(--dim)"><span>Optional extras</span><span>only if you are under 45</span></div>';
       ex.forEach(function(id){h+='<div style="margin-top:8px">'+exCard(id,lg)+'</div>'});h+='</div>';
     }
+    if(!lg.skipped)h+=fbBlock(lg);
     if(!lg.skipped)h+='<h2>Notes</h2><textarea data-note="1" placeholder="How it felt, energy, anything odd. Included in your weekly review." aria-label="Workout notes">'+esc(lg.note||'')+'</textarea>';
     h+='<div style="margin-top:18px" class="stack"><button class="cta" type="button" data-act="finish">'+(lg.done?'Update summary':'Finish session')+'</button>'+(lg.skipped||lg.done?'':'<button class="btn w" type="button" data-act="skip">Skip this session</button>')+'</div>';
     return h;
@@ -1787,7 +1838,8 @@ var INFO={
       h+='<div class="card fnd '+f.sev+'"'+(f.dismissed?' style="opacity:.55"':'')+'><div class="sev">'+(f.sev==='high'?'Priority':f.sev==='med'?'Worth fixing':'Note')+'</div><b>'+esc(f.title)+'</b><div class="note">'+esc(f.detail)+'</div>';
       if(f.addon&&!f.dismissed)h+='<div class="note" style="color:var(--ink)">'+(f.placed?'Added <b>'+esc(EX[f.addon].n)+'</b> to '+dayById(f.placed).dow+' ('+Prog.ADD[f.addon].m+' min, still under 45).':'Queued: '+esc(EX[f.addon].n)+' starts once the add-on already on that day is cleared.')+'</div>';
       if(f.lift&&A.ahead[f.lift]&&S.cycle>1)h+='<div style="margin-top:10px" class="stack"><button class="btn w" type="button" data-act="applytm" data-k="'+f.lift+'">Raise training max to '+A.ahead[f.lift].suggest+' kg now</button></div>';
-      if(f.addon||f.lift)h+='<div style="margin-top:8px"><button class="btn s" type="button" data-act="'+(f.dismissed?'undismiss':'dismiss')+'" data-id="'+f.id+'">'+(f.dismissed?'Restore':'Ignore this')+'</button></div>';
+      if(f.act&&!f.dismissed)h+='<div style="margin-top:10px" class="stack"><button class="btn w" type="button" data-act="fbapply" data-id="'+f.id+'">'+(f.act.t==='tm'?'Raise training max to '+f.act.v+' kg':f.act.v?'Turn on Heavy mat week':'Turn off Heavy mat week')+'</button></div>';
+      if(f.addon||f.lift||f.act)h+='<div style="margin-top:8px"><button class="btn s" type="button" data-act="'+(f.dismissed?'undismiss':'dismiss')+'" data-id="'+f.id+'">'+(f.dismissed?'Restore':'Ignore this')+'</button></div>';
       h+='</div>';
     });
     h+='</div>';
@@ -1826,6 +1878,7 @@ var INFO={
     lines.push('Extra workouts logged in the app: '+((S.extra||[]).slice(-10).map(function(e){return e.d+' '+e.type+(e.min?' '+e.min+'min':'')+(e.dist?' '+e.dist+'km':'')+(e.rpe?' effort '+e.rpe+'/10':'')+(e.note?' ('+e.note+')':'')}).join('; ')||'none')+'.');
     lines.push('Other WHOOP-recorded activities, such as jiu-jitsu (not the gym sessions above): '+((S.whw||[]).filter(function(w){return !matchedWh(w)}).slice(-14).map(function(w){return w.d+' '+w.sport+' '+w.min+'min strain '+w.strain+(w.avg?' avgHR '+w.avg:'')}).join('; ')||'none')+'.');
     if(S.wh&&S.wh.length)lines.push('WHOOP daily data (date recovery%/HRV/RHR/sleep%/sleep hours/day strain): '+S.wh.slice(-14).map(function(x){return x.d+' '+[x.rec,x.hrv,x.rhr,x.sleep,x.sleepH,x.strain].map(function(v){return v==null?'-':v}).join('/')}).join('; ')+'.');
+    (function(){var fs=fbSessions();if(fs.length)lines.push('How sessions felt (your rating, then evidence): '+fs.map(function(s){return s.date+' '+s.id+': '+FEEL[s.feel-1].toLowerCase()+(s.energy?', energy '+ENERGY[s.energy-1].toLowerCase():'')+(s.body?', body '+BODY[s.body-1].toLowerCase():'')+' | last-set reps vs target '+(s.sur==null?'n/a':(s.sur>=0?'+':'')+s.sur)+(s.rec!=null?', recovery '+s.rec+'%':'')+(s.pain?', pain '+s.pain+'/10':'')}).join('; ')+'. Only recommend programming changes from how sessions felt when the evidence agrees; when it does not, say so and hold.')})();
     lines.push('The app\'s own rule-based flags: '+(A.findings.map(function(f){return f.title}).join('; ')||'none')+'.');
     lines.push('Tasks: 1) Name the two or three most important inefficiencies or imbalances, using height, bodyweight and recovery as context where they matter. 2) For each, give one specific fix that fits inside 45 minutes: say what to swap or trim, not only what to add. 3) Say whether any training max should change now, and why. 4) For any pain note, suggest one alternative exercise that avoids the described painful movement but trains the same area. 5) One recovery or load-management note given the mat training. Do not diagnose injuries; if any pain flag is 4 or higher, tell them to see a physio if it repeats. Be direct and specific to these numbers.');
     return lines.join('\n');
@@ -2039,6 +2092,9 @@ var INFO={
     else if(a==='bwlog'){var w=parseFloat($('bwin').value);if(w>0){var t=today();if(S.bw.length&&S.bw[S.bw.length-1].d===t)S.bw[S.bw.length-1].w=w;else S.bw.push({d:t,w:w})}}
     else if(a==='dismiss'){S.dismiss[d.id]=true}
     else if(a==='undismiss'){delete S.dismiss[d.id]}
+    else if(a==='fb'){lg.fb=lg.fb||{};var fv=+d.v;lg.fb[d.k]=lg.fb[d.k]===fv?null:fv;lg.fb.t=Date.now()}
+    else if(a==='fbapply'){var ff=(A.findings||[]).filter(function(x){return x.id===d.id})[0];
+      if(ff&&ff.act){if(ff.act.t==='tm'){S.undo={k:ff.act.k,from:S.tm[ff.act.k]};S.tm[ff.act.k]=ff.act.v;U.undoShow=true}else S.heavy=!!ff.act.v;S.dismiss[ff.id]=true}}
     else if(a==='applytm'){var ah=A.ahead[d.k];if(ah)S.tm[d.k]=ah.suggest}
     else if(a==='rtm'){if(S.remote){S.tm[d.k]=+d.v;S.remote.applied[d.k]=true}}
     else if(a==='rsub'){var v=S.remote&&S.remote.subs[d.k];if(v){var cid='c_'+d.k.replace(/[^a-z0-9]/gi,'');S.custom[cid]={n:v.n,sets:v.sets,reps:v.reps,rest:60,load:true,eq:'other',cue:v.cue,why:v.why,sub:true,custom:true,for:d.k,main:d.k.indexOf('main-')===0?'own':undefined};EX[cid]=S.custom[cid];S.subs[d.k]=cid;S.remote.applied['sub-'+d.k]=true}}
