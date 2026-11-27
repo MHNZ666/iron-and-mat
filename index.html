@@ -653,7 +653,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='4.0.1 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='4.1 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -1026,7 +1026,7 @@ var INFO={
       cf(key,'min','Minutes',c.min)+cf(key,'dist','Distance km',c.dist)+cf(key,'cal','Calories',c.cal)+
       cf(key,'w','Avg watts',c.w)+cf(key,'hr','Avg HR',c.hr)+cf(key,'mhr','Max HR',c.mhr)+'</div>'+
       '<label class="btn w photo" style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px">'+(c.photo?'Retake photo of the screen':'Take a photo of the screen')+'<input type="file" accept="image/*" capture="environment" data-photo="'+key+'" hidden></label>'+
-      '<div class="note" id="ph-'+key+'">'+esc(ph||(c.photo?'Photo saved. Any blanks are filled in by the Sunday review.':ghReady()?'Fill in what you can see; the photo is saved to your private backup and read by the Sunday review.':'Photos need GitHub backup (Settings). Type the numbers in for now.'))+'</div></div>';
+      '<div class="note" id="ph-'+key+'">'+esc(ph||(c.read?'Numbers read from your photo. Check them and correct anything wrong.':c.photo?'Photo saved. Any blanks are filled in by the Sunday review.':'Take a photo at the end of the session and the app reads the numbers for you, or type them in.'))+'</div></div>';
     return h;
   }
   function cf(key,f,label,v){return '<label class="f">'+label+'<input type="number" inputmode="decimal" step="any" data-cf="'+f+'" data-k="'+key+'" value="'+(v==null?'':esc(v))+'"></label>'}
@@ -1039,11 +1039,27 @@ var INFO={
   function onPhoto(input){
     var key=input.dataset.photo,file=input.files&&input.files[0];if(!file)return;
     var d=dayById(U.day),kind=key.split('-').pop(),c=cardioEntry(key,d,kind),msgEl=function(t){U.photo[key]=t;var m=$('ph-'+key);if(m)m.textContent=t};
-    if(!ghReady()){msgEl('Photo not saved: set up GitHub backup in Settings first. Type the numbers in for now.');return}
-    msgEl('Saving photo…');
-    var path='cardio/'+c.d+'-'+d.id+'-'+kind+'.jpg';
-    shrink(file).then(function(b64){return ghReq('GET',null,path).then(function(cur){return ghReq('PUT',{message:'Cardio photo '+c.d,content:b64,sha:cur&&cur.sha||undefined},path)})})
-      .then(function(){c.photo=path;save();msgEl('Photo saved. Any blanks are filled in by the Sunday review.');V()},function(e){msgEl(e&&e.status?ghErr(e):'Could not read that photo. Try again.')});
+    var canRead=!!apiCfg().code,canSave=ghReady();
+    if(!canRead&&!canSave){msgEl('To read photos, enter your server access code in Settings. Type the numbers in for now.');return}
+    msgEl(canRead?'Reading the screen…':'Saving photo…');
+    shrink(file).then(function(b64){
+      var path='cardio/'+c.d+'-'+d.id+'-'+kind+'.jpg',jobs=[];
+      jobs.push(canRead?srv('/cardio/read',{image:b64}).then(function(j){return {ok:j}},function(e){return {err:e}}):Promise.resolve({}));
+      jobs.push(canSave?ghReq('GET',null,path).then(function(cur){return ghReq('PUT',{message:'Cardio photo '+c.d,content:b64,sha:cur&&cur.sha||undefined},path)}).then(function(){return {saved:path}},function(e){return {gerr:e}}):Promise.resolve({}));
+      return Promise.all(jobs);
+    }).then(function(r){
+      var rd=r[0],sv=r[1],got=[],msg='';
+      if(sv.saved)c.photo=sv.saved;
+      if(rd.ok){var j=rd.ok,lab={min:' min',dist:' km',w:' W avg',hr:' avg HR',mhr:' max HR',cal:' cal'};
+        ['min','dist','w','hr','mhr','cal'].forEach(function(f){var v=num(j[f]);if(v!=null){c[f]=v;got.push(fmt(v)+lab[f])}});
+        if(j.machine&&MACH.indexOf(j.machine)>=0&&!c.machine)c.machine=j.machine;
+        c.src='photo';c.read=true;
+        msg=got.length?'Read from the photo: '+got.join(', ')+'. Check them and correct anything wrong.'+(j.notes?' Note: '+j.notes:''):'Could not read any numbers clearly. Type them in, or retake the photo straight on and closer.';
+      }else if(rd.err){msg=rd.err.status===501?'Your server has no Anthropic key yet, so the photo was not read.'+(sv.saved?' It is saved, and the Sunday review will fill the numbers in.':''):srvErr(rd.err,'Claude')+(sv.saved?' The photo is saved for the Sunday review.':'')}
+      else msg=sv.saved?'Photo saved. The Sunday review will fill the numbers in.':'';
+      if(sv.gerr)msg+=' Photo not backed up: '+ghErr(sv.gerr);
+      save();U.photo[key]=msg;V();
+    },function(){msgEl('Could not open that photo. Try again.')});
   }
   function mergeCardio(list){
     if(!Array.isArray(list))return;

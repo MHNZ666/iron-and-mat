@@ -6,7 +6,7 @@
 //   ALLOWED_ORIGIN       Text    https://mhnz666.github.io
 //   WHOOP_CLIENT_ID      Text    from the WHOOP developer dashboard
 //   WHOOP_CLIENT_SECRET  Secret  from the WHOOP developer dashboard
-//   ANTHROPIC_API_KEY    Secret  optional, only for instant Claude reviews in the app
+//   ANTHROPIC_API_KEY    Secret  for reading cardio photos and instant Claude reviews
 
 const MODEL = "claude-sonnet-5-5";
 const WHOOP_TOKEN = "https://api.prod.whoop.com/oauth/oauth2/token";
@@ -65,6 +65,33 @@ export default {
       const j = await r.json().catch(() => ({}));
       if (!r.ok) return reply(r.status === 401 ? 401 : r.status === 429 ? 429 : 502, { error: "WHOOP returned " + r.status + "." });
       return reply(200, j);
+    }
+
+    // Read a cardio machine screen from a photo (needs ANTHROPIC_API_KEY)
+    if (path === "/cardio/read") {
+      if (!env.ANTHROPIC_API_KEY) return reply(501, { error: "Photo reading is not set up on this server." });
+      const img = String(body.image || "");
+      if (!img || img.length > 2000000 || !/^[A-Za-z0-9+/=]+$/.test(img)) return reply(400, { error: "Missing or oversized photo." });
+      const ask = "This is a photo of a gym cardio machine's display (bike, BikeErg, air bike or rower). Read only what is clearly visible. " +
+        "Reply with JSON only, no other text, using this shape: {\"machine\": \"BikeErg|Echo bike|Rower|Other|\", \"min\": number or null (total elapsed time in minutes, decimals allowed), " +
+        "\"dist\": number or null (distance in km; convert metres to km), \"w\": number or null (average watts), \"hr\": number or null (average heart rate), " +
+        "\"mhr\": number or null (max heart rate), \"cal\": number or null (calories), \"notes\": \"short note on anything unclear\"}. " +
+        "Use null for anything you cannot read with confidence. Never guess.";
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model: MODEL, max_tokens: 300, messages: [{ role: "user", content: [
+          { type: "image", source: { type: "base64", media_type: "image/jpeg", data: img } },
+          { type: "text", text: ask } ] }] }),
+      });
+      if (!r.ok) return reply(r.status === 429 ? 429 : 502, { error: "Anthropic API error " + r.status });
+      const j = await r.json();
+      const t = (j.content || []).filter((c) => c.type === "text").map((c) => c.text).join("");
+      const m = t.match(/\{[\s\S]*\}/);
+      let out = {};
+      try { out = m ? JSON.parse(m[0]) : {}; } catch (e) { return reply(502, { error: "Could not read the screen." }); }
+      const n = (v) => (typeof v === "number" && isFinite(v) && v >= 0 && v < 100000 ? Math.round(v * 100) / 100 : null);
+      return reply(200, { machine: String(out.machine || "").slice(0, 20), min: n(out.min), dist: n(out.dist), w: n(out.w), hr: n(out.hr), mhr: n(out.mhr), cal: n(out.cal), notes: String(out.notes || "").slice(0, 200) });
     }
 
     // Instant Claude review (optional)
