@@ -309,6 +309,31 @@ var Prog=(function(){
     trapdl:{n:'Trap bar deadlift',main:'same',sub:true,cue:'Same weights as programmed. A more upright pull that is easier on the lower back.'},
     rackpl:{n:'Block pull, bar below the knee',main:'same',sub:true,cue:'Same weights as programmed. A shorter range for a sore lower back.'},
     bbfloor:{n:'Barbell floor press',main:'same',sub:true,cue:'Same weights as programmed. The floor stops the elbows before the shoulder is stretched.'},
+    // Rehab and mobility drills, added when a pain is marked "address this pain" (one per joint at a time)
+    m_stick:{n:'Stick pass-through',sets:2,reps:'10',rest:0,mob:true,eq:'bw',cue:'Wide grip on a dowel or band. Lift it over your head and behind, then back, with straight arms. Narrow the grip a little each week.'},
+    m_bander:{n:'Band external rotation stretch',sets:2,reps:'30 s/side',rest:0,mob:true,eq:'band',cue:'Elbow bent at 90 degrees, band pulling the hand inward. Let the shoulder rotate out to a gentle stretch and breathe.'},
+    m_rack:{n:'Empty-bar squat-grip hold',sets:2,reps:'30 s',rest:0,mob:true,eq:'bb',cue:'Bar on your back with the grip you squat with, elbows under the bar. Hold, and bring the hands in slightly as it eases.'},
+    m_pullapart:{n:'Band pull-apart',sets:2,reps:'15',rest:0,mob:true,eq:'band',cue:'Arms straight at shoulder height. Pull the band apart to the chest by squeezing the shoulder blades.'},
+    m_sler:{n:'Side-lying external rotation',sets:2,reps:'12/side',rest:0,mob:true,eq:'db1',cue:'Very light dumbbell, elbow pinned to your side. Rotate the forearm up slowly and lower for three seconds.'},
+    m_scap:{n:'Hanging scapular pulls',sets:2,reps:'8',rest:0,mob:true,eq:'bw',cue:'From a dead hang, pull the shoulder blades down without bending the elbows, then relax back into the hang.'},
+    m_tspine:{n:'Thoracic extension over a bench',sets:2,reps:'8',rest:0,mob:true,eq:'bw',cue:'Kneel with elbows on a bench and a stick in your hands. Sink the chest toward the floor and breathe out.'},
+    m_openbook:{n:'Open book rotation',sets:2,reps:'8/side',rest:0,mob:true,eq:'bw',cue:'Lie on your side with knees bent. Open the top arm across to the other side, following it with your eyes.'},
+    m_wallslide:{n:'Wall slide',sets:2,reps:'10',rest:0,mob:true,eq:'bw',cue:'Back and forearms on the wall. Slide the arms up without the lower back arching off the wall.'},
+    m_wristrock:{n:'Wrist rocks on hands and knees',sets:2,reps:'10',rest:0,mob:true,eq:'bw',cue:'Hands flat, fingers forward. Rock gently forward and back over the wrists, then repeat with fingers pointing back.'},
+    m_revcurl:{n:'Light reverse wrist curl',sets:2,reps:'15',rest:0,mob:true,eq:'db1',cue:'Forearm on your thigh, palm down. Lift the back of the hand slowly with a very light weight.'},
+    m_pronate:{n:'Forearm rotation with a light weight',sets:2,reps:'12/side',rest:0,mob:true,eq:'db1',cue:'Hold one end of a light dumbbell or hammer. Rotate the palm up and down slowly.'},
+    m_9090:{n:'90/90 hip switch',sets:2,reps:'8/side',rest:0,mob:true,eq:'bw',cue:'Sit with both knees bent at 90 degrees. Rotate the knees to the other side, staying tall.'},
+    m_hipflex:{n:'Hip flexor lift, seated',sets:2,reps:'10/side',rest:0,mob:true,eq:'bw',cue:'Sit tall, legs straight. Lift one straight leg a few centimetres and hold one second.'},
+    m_cossack:{n:'Cossack squat to a box',sets:2,reps:'6/side',rest:0,mob:true,eq:'bw',cue:'Wide stance, shift to one side and sit to a box, the other leg straight. Go only as deep as is pain-free.'},
+    m_catcamel:{n:'Cat-camel',sets:2,reps:'10',rest:0,mob:true,eq:'bw',cue:'On hands and knees. Round the spine up slowly, then let it sag gently. Move one segment at a time.'},
+    m_revhyper:{n:'Reverse hyper on a bench',sets:2,reps:'12',rest:0,mob:true,eq:'bw',cue:'Lie face down on a bench, hips at the edge. Raise straight legs to body height with the glutes, then lower slowly.'},
+    m_jeff:{n:'Very light Jefferson curl',sets:2,reps:'8',rest:0,mob:true,eq:'db1',cue:'Standing on a low box with a very light weight. Roll down one vertebra at a time, then roll back up. Stop well short of pain.'},
+    m_chintuck:{n:'Chin tuck',sets:2,reps:'10',rest:0,mob:true,eq:'bw',cue:'Slide the chin straight back to make a double chin. Hold two seconds.'},
+    m_neckiso:{n:'Neck isometric hold',sets:2,reps:'4 × 10 s',rest:0,mob:true,eq:'bw',cue:'Hand against the head, push gently in each direction without moving.'},
+    m_neckcurl:{n:'Light lying neck curl',sets:2,reps:'12',rest:0,mob:true,eq:'bw',cue:'Lying on a bench with the head off the end. Curl the chin to the chest slowly, no weight to begin with.'},
+    m_ankle:{n:'Knee-to-wall ankle rock',sets:2,reps:'10/side',rest:0,mob:true,eq:'bw',cue:'Foot a hand-width from the wall. Drive the knee forward to touch the wall without the heel lifting.'},
+    m_slcalf:{n:'Slow single-leg calf raise',sets:2,reps:'10/side',rest:0,mob:true,eq:'bw',cue:'Three seconds up, pause, three seconds down. Hold a rail for balance.'},
+    m_rom:{n:'Gentle range of motion for the area',sets:2,reps:'10',rest:0,mob:true,eq:'bw',cue:'Move the sore area slowly through the range that is comfortable, a little further each week.'},
     // Add-ons the review can prescribe for a lagging lift
     fsq:{n:'Front squat, heels elevated',sets:3,reps:'6',rest:90,load:true,knee:true,eq:'bb',cue:'Squat assistance added by your review. Heels on small plates, full depth you control, pain-free.'},
     rack:{n:'Rack pull',sets:3,reps:'5',rest:90,load:true,eq:'bb',cue:'Deadlift assistance added by your review. Bar just below the knee, brace hard, keep it close.'},
@@ -322,6 +347,17 @@ var Prog=(function(){
     sprawl:['inclsprawl','pallof'],hang:['supphang'],elephant:['hamfloss'],couch:['hkhip'],pullup:['pulldown'],neck:['neckiso'],
     fsq:['goblet','spanish'],rack:['kbdl','backext'],dbpress:['landpress'],dbbench:['pushup'],
     'main-squat':['boxsq','goblet'],'main-dead':['trapdl','rackpl'],'main-bench':['bbfloor','dbbenchn'],'main-press':['landpress','dbpress']};
+  // Rehab ladders: each joint gets one drill at a time, and moves up a level as pain improves
+  var MOB={shoulder_grip:['m_stick','m_bander','m_rack'],shoulder:['m_pullapart','m_sler','m_scap'],'upper back':['m_tspine','m_openbook','m_wallslide'],
+    elbow:['m_revcurl','m_pronate','m_wristrock'],wrist:['m_wristrock','m_revcurl','m_pronate'],hip:['m_9090','m_hipflex','m_cossack'],'lower back':['m_catcamel','m_revhyper','m_jeff'],
+    neck:['m_chintuck','m_neckiso','m_neckcurl'],ankle:['m_ankle','m_slcalf','m_ankle'],other:['m_rom','m_rom','m_rom']};
+  function mobLadder(part,trig,exName){
+    var p=(part||'').toLowerCase(),t=((trig||'')+' '+(exName||'')).toLowerCase();
+    if(p==='knee')return null;
+    if(p==='shoulder')return /grip|rotat|bar|squat|rack|behind/.test(t)?'shoulder_grip':'shoulder';
+    if(p==='wrist or hand')return 'wrist';if(p==='ankle or foot')return 'ankle';
+    return MOB[p]?p:'other';
+  }
   var ADD={fsq:{d:'d1',m:5},rack:{d:'d4',m:5},dbpress:{d:'d2',m:4},dbbench:{d:'d2',m:4},pullup:{d:'d2',m:5}};
   var DAYS=[
     {id:'d1',dow:'Mon',title:'Squat and knees',lift:'squat',blocks:[
@@ -363,7 +399,7 @@ var Prog=(function(){
   function dayMin(d,cycle,week,heavy,addon){var s=0;d.blocks.forEach(function(b){s+=blockMin(b,cycle,week,heavy)});if(addon&&ADD[addon]&&ADD[addon].d===d.id)s+=ADD[addon].m;return s}
   function sets(ex,heavy){return heavy&&!ex.extra&&ex.sets>1&&ex.rest>0?ex.sets-1:ex.sets}
   function phase(cycle){return cycle>=3?'push':cycle===2?'build':'learn'}
-  return {EX:EX,ALTS:ALTS,ADD:ADD,DAYS:DAYS,rounds:rounds,condMode:condMode,condMin:condMin,blockMin:blockMin,dayMin:dayMin,sets:sets,phase:phase};
+  return {EX:EX,ALTS:ALTS,MOB:MOB,mobLadder:mobLadder,ADD:ADD,DAYS:DAYS,rounds:rounds,condMode:condMode,condMin:condMin,blockMin:blockMin,dayMin:dayMin,sets:sets,phase:phase};
 })();
 /*ENDPROG*/
 </script>
@@ -606,6 +642,30 @@ var Anim=(function(){
 <script id="info">
 /*INFO*/
 var INFO={
+  m_stick:{a:'press',b:'Restores the overhead and behind-the-back range the shoulders need to reach a squat grip.',c:['Start with a wide grip.','Straight arms, slow and smooth.','Bring the grip in a little as it gets easy.']},
+  m_bander:{a:'er',b:'Opens the external rotation the shoulder needs to hold a low-bar or back-squat grip.',c:['Elbow bent and close to the body.','Let the band pull gently.','Breathe and relax into it.']},
+  m_rack:{a:'squat',b:'Practises the exact squat-grip position under no load, so the range carries over to your squat.',c:['Elbows under the bar.','Chest up, no shrugging.','Inch the hands closer over the weeks.']},
+  m_pullapart:{a:'facepull',b:'Strengthens the rear shoulder and upper back to balance pressing and gripping.',c:['Straight arms.','Squeeze the shoulder blades together.','Control the return.']},
+  m_sler:{a:'er',b:'Builds rotator cuff strength, which protects the shoulder in awkward positions.',c:['Very light weight.','Elbow pinned to your side.','Three seconds down.']},
+  m_scap:{a:'hang',b:'Teaches the shoulder blades to set before pulling, which protects the shoulder.',c:['Arms stay straight.','Pull the shoulders away from the ears.','Relax fully between reps.']},
+  m_tspine:{a:'pushup',b:'Improves upper-back extension, so the shoulders and neck do less of the work.',c:['Elbows on the bench.','Sink the chest.','Breathe out at the bottom.']},
+  m_openbook:{a:null,b:'Restores rotation through the upper back.',c:['Knees stacked and still.','Follow the hand with your eyes.','Pause at the end.']},
+  m_wallslide:{a:'press',b:'Trains the shoulder blades to move well overhead.',c:['Back flat on the wall.','Slide up slowly.','Stop before the back arches.']},
+  m_wristrock:{a:'pushup',b:'Gently restores wrist extension and flexion.',c:['Weight shifts slowly.','Only to a mild stretch.','Both directions.']},
+  m_revcurl:{a:null,b:'Strengthens the forearm extensors, often sore from gripping.',c:['Forearm supported.','Very light weight.','Slow lowering.']},
+  m_pronate:{a:null,b:'Restores forearm rotation for elbow and wrist comfort.',c:['Elbow at your side.','Slow rotation.','Short lever to start.']},
+  m_9090:{a:null,b:'Improves hip rotation in both directions, important for guard work.',c:['Sit tall.','Use your hands for support at first.','Move slowly.']},
+  m_hipflex:{a:'hlr',b:'Strengthens the hip flexors at short lengths, where they are usually weakest.',c:['Sit tall.','Small lift, one-second hold.','Leg stays straight.']},
+  m_cossack:{a:null,b:'Builds side-to-side hip and groin range under control.',c:['Box under the hips.','Heel down on the bent leg.','Pain-free depth only.']},
+  m_catcamel:{a:'pushup',b:'Gently moves the whole spine and eases a stiff lower back.',c:['Slow and smooth.','Breathe with each movement.','No forcing the end range.']},
+  m_revhyper:{a:'backext',b:'Strengthens the glutes and lower back while gently decompressing the spine.',c:['Hips at the bench edge.','Lift with the glutes.','Lower slowly.']},
+  m_jeff:{a:'hinge',b:'Builds controlled strength through a rounded spine, the shape the back is forced into on the mat.',c:['Very light weight only.','One vertebra at a time.','Stop well before pain.']},
+  m_chintuck:{a:'neck',b:'Retrains neck posture and the deep neck flexors.',c:['Chin straight back, not down.','Two-second hold.','Shoulders relaxed.']},
+  m_neckiso:{a:'neck',b:'Builds neck strength without moving a sore neck.',c:['Gentle pressure.','Every direction.','No movement.']},
+  m_neckcurl:{a:'neck',b:'Strengthens the front of the neck through its range.',c:['No weight at first.','Slow curl.','Stop at any sharp pain.']},
+  m_ankle:{a:'calf',b:'Improves ankle bend, which takes stress off the knees in squats.',c:['Heel stays down.','Knee tracks over the toes.','Move the foot back as it improves.']},
+  m_slcalf:{a:'calf',b:'Strengthens the calf and Achilles one side at a time.',c:['Three seconds up and down.','Full range.','Hold a rail.']},
+  m_rom:{a:null,b:'Keeps the area moving so it does not stiffen while it settles.',c:['Comfortable range only.','Slow and controlled.','A little more each week.']},
   'main-squat':{a:'squat',b:'Builds leg and hip strength for driving through opponents, standing up in base and finishing takedowns.',c:['Brace your stomach before you descend, as if about to be punched.','Knees track out over your toes; let them travel forward.','Sit down between your hips, then drive up through the whole foot.']},
   'main-bench':{a:'bench',b:'Pressing strength for framing, creating space and pushing off from bottom positions.',c:['Shoulder blades pulled together and down into the bench.','Lower the bar to the lower chest with elbows about 45 degrees out.','Feet planted; press the bar back up over the shoulders.']},
   'main-dead':{a:'deadlift',b:'Whole posterior chain and grip strength: posture in guard, lifting and resisting being stacked.',c:['Bar over the middle of the foot, shins close to it.','Pull the slack out of the bar before it leaves the floor.','Push the floor away; hips and shoulders rise together.']},
@@ -680,7 +740,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='4.6 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='4.7 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -695,13 +755,42 @@ var INFO={
     tm:{},cycle:1,week:0,logs:{},hist:[],loads:{},alts:{},pain:[],
     h:'',bw:[],pu:'',loadHist:{},dismiss:{},claude:null,reviewDue:false,u:0,
     step:5,subs:{},custom:{},cardio:{},lnote:{},undo:null,wh:[],whoop:null,whw:[],extra:[],reports:[],ctarget:{},rw:{lvl:1,ok:0,hist:[]}}}
-  function load(){try{var j=localStorage.getItem(KEY);if(j)return Object.assign(defaults(),JSON.parse(j))}catch(e){}return defaults()}
+  /* ---------- data safety: nothing is overwritten without a copy being kept first ---------- */
+  var SNAPKEY='iron-mat-snapshots',Safe={blocked:false,warn:''};
+  function nLogs(o){var n=0;Object.keys(o&&o.logs||{}).forEach(function(k){var l=o.logs[k];if(l&&(l.done||l.t0))n++});return n}
+  function snaps(){try{return JSON.parse(localStorage.getItem(SNAPKEY)||'[]')}catch(e){return []}}
+  function snapshot(why,raw){
+    // keeps the last 4 copies of your data on this phone, taken before updates, restores and wipes
+    try{var j=raw||localStorage.getItem(KEY);if(!j)return;var o=null;try{o=JSON.parse(j)}catch(e){}
+      var list=snaps();if(list.length&&list[0].j===j)return;
+      list.unshift({t:Date.now(),why:why,n:o?nLogs(o):0,v:o&&o.ver||'',j:j});
+      while(list.length>4)list.pop();
+      for(;;){try{localStorage.setItem(SNAPKEY,JSON.stringify(list));break}catch(e){if(list.length<=1){break}list.pop()}}
+    }catch(e){}
+  }
+  function load(){
+    var j=null;try{j=localStorage.getItem(KEY)}catch(e){}
+    if(!j)return defaults();
+    try{var o=JSON.parse(j);if(!o||typeof o!=='object')throw 0;return Object.assign(defaults(),o)}
+    catch(e){
+      // the saved data could not be read: keep it untouched and do not save over it
+      try{localStorage.setItem(KEY+'-unreadable-'+Date.now(),j)}catch(e2){}
+      Safe.blocked=true;Safe.warn='Your saved data could not be read, so the app has not touched it. Restore from GitHub or a saved copy in Settings.';
+      return defaults();
+    }
+  }
   var S=load();
+  (function(){
+    // a new app version: keep a copy of the data first, then add any new fields without removing anything
+    if(!Safe.blocked&&S.ver!==VERSION){if(S.ver||S.onboarded)snapshot('Before update to '+VERSION);S.ver=VERSION;
+      try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+    try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
+  })();
   function mergeCustom(){Object.keys(S.custom||{}).forEach(function(k){EX[k]=S.custom[k]})}
   mergeCustom();
   setTimeout(function(){migrateReports()},0);
   if(S.unit!=='kg')convert('kg');
-  var U={view:S.onboarded?'today':'onboard',day:null,pTab:'squat',cTab:'zone2',msg:'',nc:{},bk:'',ask:false,lv:null,cl:null,copied:'',pf:null,sw:null,info:null,photo:{},cal:null,calM:null,xw:null,ropen:null,rbusy:false,rerr:''};
+  var U={view:Safe.blocked?'settings':S.onboarded?'today':'onboard',day:null,pTab:'squat',cTab:'zone2',msg:'',nc:{},bk:'',ask:false,lv:null,cl:null,copied:'',pf:null,sw:null,info:null,photo:{},cal:null,calM:null,xw:null,ropen:null,rbusy:false,rerr:''};
   var A=null;
   var APIKEY='iron-mat-api';
   var SERVER='https://iron-and-mat.marcushandley91.workers.dev';
@@ -721,17 +810,23 @@ var INFO={
   function ghErr(e){var s=e&&e.status;return s===401?'GitHub did not accept the token. Make a new one and paste it again.':s===403?'The token cannot write to that repo. Give it Contents: Read and write.':s===404?'Repo not found. Check the name, and that the token includes it.':s===409||s===422?'Someone else changed the backup at the same moment. Tap Back up now again.':'Could not reach GitHub. Check your connection.'}
   function ghReady(){var c=ghCfg();return !!(c.repo&&c.token)}
   function ghBackup(manual){
-    if(!ghReady()||GH.busy)return;
+    if(!ghReady()||GH.busy||Safe.blocked)return;
     var c=ghCfg();if(!manual&&c.last&&Date.now()-c.last<10*60000)return;
     GH.busy=true;GH.msg='Backing up…';paintGh();
     var d=new Date().toISOString().slice(0,16).replace('T',' ');
     ghReq('GET').then(function(cur){
+      var rem=null;try{rem=cur&&cur.content?JSON.parse(b64d(cur.content)):null}catch(e){}
+      if(rem&&nLogs(rem)>nLogs(S)&&!GH.force){
+        // the backup on GitHub has more workouts than this phone: stop and ask, so nothing is lost
+        GH.force=false;throw {status:0,fewer:true,r:nLogs(rem),l:nLogs(S)};
+      }
+      GH.force=false;
       return ghReq('PUT',{message:'Backup '+d,content:b64e(JSON.stringify(S,null,1)),sha:cur&&cur.sha||undefined});
     }).then(function(){
       if(!S.onboarded||!A)return;
       var md='# Training summary for Claude\n\nWritten by the app at '+d+' UTC. Full log: backup.json.\n\n'+claudePrompt()+'\n';
       return ghReq('GET',null,'summary.md').then(function(cur){return ghReq('PUT',{message:'Summary '+d,content:b64e(md),sha:cur&&cur.sha||undefined},'summary.md')});
-    }).then(function(){var c2=ghCfg();c2.last=Date.now();setGh(c2);GH.msg='Backed up to GitHub just now.'},function(e){GH.msg=ghErr(e)})
+    }).then(function(){var c2=ghCfg();c2.last=Date.now();setGh(c2);GH.msg='Backed up to GitHub just now.'},function(e){if(e&&e.fewer){GH.fewer=e;GH.msg='Not backed up: GitHub has '+e.r+' workouts and this phone has '+e.l+'. Restore from GitHub, or tap Back up anyway.';V()}else GH.msg=ghErr(e)})
       .then(function(){GH.busy=false;paintGh()});
   }
   function ghRestore(){
@@ -740,7 +835,7 @@ var INFO={
     ghReq('GET').then(function(cur){
       if(!cur||!cur.content)throw {status:0,none:true};
       var o=JSON.parse(b64d(cur.content));if(!o||!o.tm)throw {status:0,bad:true};
-      S=Object.assign(defaults(),o);mergeCustom();save();GH.msg='Restored from GitHub.';U.view='today';
+      snapshot('Before restore from GitHub');Safe.blocked=false;Safe.warn='';S=Object.assign(defaults(),o);mergeCustom();save();GH.fewer=null;GH.msg='Restored from GitHub. Your previous data is kept as a saved copy in Settings.';U.view='today';
     }).catch(function(e){GH.msg=e&&e.none?'No backup in that repo yet.':e&&e.bad?'The backup file is not readable.':ghErr(e)})
       .then(function(){GH.busy=false;GH.ask=false;V()});
   }
@@ -770,7 +865,15 @@ var INFO={
 
   /* ---------- saving: this device first, then your Claude account when available ---------- */
   var Sync={ref:null,busy:false,dirty:false,t:null,on:false};
-  function save(){S.u=Date.now();try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}schedule()}
+  function save(){S.u=Date.now();
+    if(Safe.blocked)return;
+    try{localStorage.setItem(KEY,JSON.stringify(S));if(Safe.full){Safe.full=false;Safe.warn=''}}
+    catch(e){
+      // storage full: drop the oldest safety copies and try again, then warn rather than fail silently
+      try{localStorage.removeItem(SNAPKEY);localStorage.setItem(KEY,JSON.stringify(S))}
+      catch(e2){Safe.full=true;Safe.warn='Your phone would not let the app save. Back up to GitHub now, then free some space.';if(ghReady())ghBackup(true)}
+    }
+    schedule()}
   function schedule(){if(!Sync.ref)return;clearTimeout(Sync.t);Sync.t=setTimeout(push,1500)}
   function trimmed(){
     var s=JSON.parse(JSON.stringify(S));
@@ -789,7 +892,7 @@ var INFO={
     }).then(function(snap){
       if(!snap)return;Sync.on=true;
       var d=snap.exists?snap.data():null;
-      if(d&&d.s&&(+d.u||0)>(+S.u||0)){S=Object.assign(defaults(),d.s);mergeCustom();try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}U.view=S.onboarded?(U.view==='onboard'?'today':U.view):'onboard';V()}
+      if(d&&d.s&&(+d.u||0)>(+S.u||0)&&nLogs(d.s)>=nLogs(S)){snapshot('Before sync from Claude');S=Object.assign(defaults(),d.s);mergeCustom();try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}U.view=S.onboarded?(U.view==='onboard'?'today':U.view):'onboard';V()}
       else if(S.onboarded)push();
     }).catch(function(){});
   }
@@ -1279,6 +1382,7 @@ var INFO={
   /* ---------- views ---------- */
   function V(){
     if(S.onboarded)A=analyse();
+    if(Safe.blocked&&U.view!=='settings')U.view='settings';
     var v=U.view,h='';
     $('tabs').hidden=(v==='onboard'||v==='next');
     Array.prototype.forEach.call($('tabs').querySelectorAll('button'),function(b){
@@ -1289,6 +1393,7 @@ var INFO={
     $('repdot').hidden=!(S.reports||[]).some(function(r){return !r.seen});
     h=v==='onboard'?vOnboard():v==='today'?vToday():v==='session'?vSession():v==='review'?vReview():v==='reports'?vReports():v==='progress'?vProgress():v==='settings'?vSettings():vNext();
     if(U.pf)h+=painModal();else if(U.info)h+=infoModal();else if(U.sw)h+=swapModal();else if(U.xw)h+=xModal();else if(U.cal)h+=dayModal();
+    if(Safe.warn)h='<div class="card" role="alert" style="border-color:var(--warn,#e0a030)"><b>Your data is safe</b><div class="note" style="margin:4px 0 0">'+esc(Safe.warn)+'</div></div>'+h;
     var y=window.scrollY;$('view').innerHTML=h;
     var ct=$('cltext');if(ct){var t=U.cl&&U.cl.text!=null?U.cl.text:(S.claude?S.claude.text:'');ct.textContent=t}
     if(v!==U.lv){window.scrollTo(0,0);U.lv=v}else if(Math.abs(window.scrollY-y)>2)window.scrollTo(0,y);
@@ -1678,10 +1783,15 @@ var INFO={
       '<label class="f">Access token<input type="password" autocomplete="off" id="ghtoken" value="'+esc(gc.token||'')+'" placeholder="github_pat_…" style="font-size:15px;text-align:left"></label>'+
       '<button class="btn w" type="button" data-act="ghsave">Save GitHub details</button>'+
       '<button class="btn w" type="button" data-act="ghnow"'+(ghReady()?'':' disabled')+'>Back up now</button>'+
+      (GH.fewer?'<button class="btn w" type="button" data-act="ghforce">Back up anyway (GitHub keeps the old one in its history)</button>':'')+
       '<button class="btn w" type="button" data-act="ghrestore"'+(ghReady()?'':' disabled')+'>'+(GH.ask?'Tap again: replace this phone’s log':'Restore from GitHub')+'</button>'+
       '<div class="note" id="ghmsg" style="margin:0" aria-live="polite">'+esc(GH.msg||ghStatus())+'</div></div></div>';
     h+='<h2>Backup by copy and paste</h2><div class="card"><button class="btn w" type="button" data-act="copy">Copy backup</button><div class="note" id="bkmsg">'+(U.bk||'Copies everything to your clipboard. Paste it below on any device to restore.')+'</div>'+
        '<textarea id="bkbox" placeholder="Paste a backup here" aria-label="Backup text" style="margin-top:10px"></textarea><button class="btn w" type="button" data-act="restore" style="margin-top:10px">Restore from backup</button></div>';
+    var sl=snaps();
+    h+='<h2>Saved copies on this phone</h2><div class="card"><div class="note" style="margin:0">The app keeps a copy of your data before every update, restore or reset. The last 4 are kept. Every GitHub backup is also kept in that repo\'s history.</div>'+
+      (sl.length?sl.map(function(s,i){return '<div class="row" style="margin-top:10px;align-items:center"><div style="flex:1"><b>'+esc(new Date(s.t).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}))+'</b><div class="note" style="margin:0">'+esc(s.why)+' · '+s.n+' workouts</div></div>'+
+        '<button class="btn" type="button" data-act="snaprestore" data-i="'+i+'">'+(U.snapAsk===i?'Tap again':'Restore')+'</button></div>'}).join(''):'<div class="note">None yet.</div>')+'</div>';
     h+='<h2>Danger zone</h2><button class="btn w" type="button" data-act="wipe">'+(U.ask?'Tap again to erase everything':'Erase all data')+'</button>';
     h+='<p class="note" style="text-align:center;margin-top:18px">Iron and Mat · version '+VERSION+'</p>';
     return h;
@@ -1824,12 +1934,15 @@ var INFO={
       if(rp&&!/^[\w.-]+\/[\w.-]+$/.test(rp)){GH.msg='Repo should look like MHNZ666/iron-and-mat-data.';paintGh();return}
       var o=ghCfg();o.repo=rp;o.token=tk;setGh(o);GH.msg=rp&&tk?'Saved. Tap Back up now to test it.':'Cleared.';V();return}
     else if(a==='ghnow'){ghBackup(true);return}
+    else if(a==='ghforce'){GH.force=true;GH.fewer=null;ghBackup(true);return}
+    else if(a==='snaprestore'){var si=+d.i;if(U.snapAsk!==si){U.snapAsk=si;V();return}U.snapAsk=null;var sl2=snaps(),sn=sl2[si];
+      if(sn){try{var o3=JSON.parse(sn.j);snapshot('Before restoring a saved copy');Safe.blocked=false;Safe.warn='';S=Object.assign(defaults(),o3);S.ver=VERSION;mergeCustom();save();U.bk='Saved copy restored.';U.view='today'}catch(e){U.bk='That copy could not be read.'}}}
     else if(a==='ghrestore'){if(!GH.ask){GH.ask=true;V();return}ghRestore();return}
     else if(a==='copy'){copyText(JSON.stringify(S),function(){U.bk='Copied. Paste it somewhere safe.';var m=$('bkmsg');if(m)m.textContent=U.bk},'bkbox');return}
     else if(a==='restore'){
-      try{var o2=JSON.parse($('bkbox').value.trim());if(!o2||!o2.tm)throw 0;S=Object.assign(defaults(),o2);mergeCustom();U.bk='Restored.';U.view='today'}
+      try{var o2=JSON.parse($('bkbox').value.trim());if(!o2||!o2.tm)throw 0;snapshot('Before restore from pasted backup');Safe.blocked=false;Safe.warn='';S=Object.assign(defaults(),o2);mergeCustom();U.bk='Restored.';U.view='today'}
       catch(e){U.bk='That does not look like an Iron and Mat backup. Copy it again and paste the whole thing.'}}
-    else if(a==='wipe'){if(U.ask){S=defaults();U={view:'onboard',day:null,pTab:'squat',cTab:'zone2',msg:'',nc:{},bk:'',ask:false,lv:null,cl:null,copied:'',pf:null,sw:null,info:null,photo:{}};stopTimer()}else U.ask=true}
+    else if(a==='wipe'){if(U.ask){snapshot('Before reset');S=defaults();S.ver=VERSION;U={view:'onboard',day:null,pTab:'squat',cTab:'zone2',msg:'',nc:{},bk:'',ask:false,lv:null,cl:null,copied:'',pf:null,sw:null,info:null,photo:{}};stopTimer()}else U.ask=true}
     save();V();
   });
   document.addEventListener('keydown',function(ev){if(ev.key==='Escape'&&(U.pf||U.sw||U.info||U.xw||U.cal)){U.pf=null;U.sw=null;U.info=null;U.xw=null;U.cal=null;cancelAnimationFrame(AN.raf);V()}});
