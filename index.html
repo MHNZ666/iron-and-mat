@@ -391,8 +391,8 @@ var Rules=(function(){
   function setGh(o){try{localStorage.setItem(GHKEY,JSON.stringify(o))}catch(e){}}
   function b64e(s){return btoa(unescape(encodeURIComponent(s)))}
   function b64d(s){return decodeURIComponent(escape(atob(s.replace(/\s/g,''))))}
-  function ghReq(method,body){
-    var c=ghCfg(),url='https://api.github.com/repos/'+c.repo+'/contents/backup.json';
+  function ghReq(method,body,path){
+    var c=ghCfg(),url='https://api.github.com/repos/'+c.repo+'/contents/'+(path||'backup.json');
     return fetch(url+(method==='GET'?'?t='+Date.now():''),{method:method,cache:'no-store',headers:{'Authorization':'Bearer '+c.token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},body:body?JSON.stringify(body):undefined})
       .then(function(r){return r.json().catch(function(){return {}}).then(function(j){if(!r.ok&&!(method==='GET'&&r.status===404))throw {status:r.status};return r.status===404?null:j})});
   }
@@ -402,9 +402,13 @@ var Rules=(function(){
     if(!ghReady()||GH.busy)return;
     var c=ghCfg();if(!manual&&c.last&&Date.now()-c.last<10*60000)return;
     GH.busy=true;GH.msg='Backing up…';paintGh();
+    var d=new Date().toISOString().slice(0,16).replace('T',' ');
     ghReq('GET').then(function(cur){
-      var d=new Date().toISOString().slice(0,16).replace('T',' ');
       return ghReq('PUT',{message:'Backup '+d,content:b64e(JSON.stringify(S,null,1)),sha:cur&&cur.sha||undefined});
+    }).then(function(){
+      if(!S.onboarded||!A)return;
+      var md='# Training summary for Claude\n\nWritten by the app at '+d+' UTC. Full log: backup.json.\n\n'+claudePrompt()+'\n';
+      return ghReq('GET',null,'summary.md').then(function(cur){return ghReq('PUT',{message:'Summary '+d,content:b64e(md),sha:cur&&cur.sha||undefined},'summary.md')});
     }).then(function(){var c2=ghCfg();c2.last=Date.now();setGh(c2);GH.msg='Backed up to GitHub just now.'},function(e){GH.msg=ghErr(e)})
       .then(function(){GH.busy=false;paintGh()});
   }
@@ -417,6 +421,24 @@ var Rules=(function(){
       S=Object.assign(defaults(),o);if(S.unit!=='kg')convert('kg');save();GH.msg='Restored from GitHub.';U.view='today';
     }).catch(function(e){GH.msg=e&&e.none?'No backup in that repo yet.':e&&e.bad?'The backup file is not readable.':ghErr(e)})
       .then(function(){GH.busy=false;GH.ask=false;V()});
+  }
+  function ghReview(force){
+    if(!ghReady())return;var c=ghCfg();
+    if(!force&&c.rlast&&Date.now()-c.rlast<5*60000)return;
+    c.rlast=Date.now();setGh(c);
+    ghReq('GET',null,'review.json').then(function(cur){
+      if(!cur||!cur.content)return;var r=JSON.parse(b64d(cur.content));
+      if(!r||typeof r.text!=='string')return;
+      var old=S.remote||{};if(old.date===r.date&&old.text===r.text)return;
+      S.remote={date:String(r.date||''),text:r.text.slice(0,6000),tm:r.tm&&typeof r.tm==='object'?r.tm:{},notes:Array.isArray(r.changes)?r.changes.slice(0,8).map(String):[],applied:{},seen:false};
+      save();V();
+    }).catch(function(){});
+  }
+  function tmSuggest(){
+    var r=S.remote,out=[];if(!r||!r.tm)return out;
+    ['squat','bench','dead','press'].forEach(function(k){var v=+r.tm[k],cur=+S.tm[k];
+      if(v>0&&cur&&Math.abs(v-cur)>0.01&&Math.abs(v-cur)/cur<=0.15&&!r.applied[k])out.push({k:k,v:Core.rnd(v,inc(),'near'),cur:cur})});
+    return out;
   }
   function paintGh(){var m=$('ghmsg');if(m)m.textContent=GH.msg||ghStatus()}
   function ghStatus(){var c=ghCfg();return !ghReady()?'Not set up.':c.last?'Last backup: '+new Date(c.last).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})+'.':'Set up. No backup yet.'}
@@ -602,7 +624,7 @@ var Rules=(function(){
       var on=b.dataset.v===v||(v==='session'&&b.dataset.v==='today');
       if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');
     });
-    $('revdot').hidden=!(A&&(S.reviewDue||A.findings.some(function(f){return f.sev==='high'&&!f.dismissed})));
+    $('revdot').hidden=!(A&&((S.remote&&!S.remote.seen)||S.reviewDue||A.findings.some(function(f){return f.sev==='high'&&!f.dismissed})));
     h=v==='onboard'?vOnboard():v==='today'?vToday():v==='session'?vSession():v==='review'?vReview():v==='progress'?vProgress():v==='settings'?vSettings():vNext();
     if(U.pf)h+=modal();
     $('view').innerHTML=h;
@@ -774,6 +796,14 @@ var Rules=(function(){
       h+='</div>';
     });
     h+='</div>';
+    // Weekly review from GitHub
+    if(S.remote){var rr=S.remote,sg=tmSuggest();
+      h+='<h2>Claude’s weekly review</h2><div class="card" style="border-color:var(--sig)"><div class="note" style="margin:0">'+esc(rr.date?'Written '+rr.date:'')+'</div><div class="claude">'+esc(rr.text)+'</div>';
+      if(rr.notes.length)h+='<div class="note" style="color:var(--ink)">Suggested changes:</div><ul style="margin:6px 0 0 18px;padding:0;line-height:1.5">'+rr.notes.map(function(n){return '<li>'+esc(n)+'</li>'}).join('')+'</ul>';
+      sg.forEach(function(s){h+='<div style="margin-top:10px"><button class="btn w" type="button" data-act="rtm" data-k="'+s.k+'" data-v="'+s.v+'">Set '+Rules.NAMES[s.k].toLowerCase()+' training max to '+fmt(s.v)+' kg (now '+fmt(s.cur)+')</button></div>'});
+      h+='</div>';
+      if(!rr.seen){rr.seen=true;setTimeout(save,0)}
+    }else if(ghReady())h+='<h2>Claude’s weekly review</h2><div class="card"><div class="note" style="margin:0">Claude reviews your backed-up log every Sunday night. The review appears here, with any suggested changes as buttons.</div></div>';
     // Claude
     var can=canReview();
     h+='<h2>Ask Claude</h2><div class="card"><div class="note" style="margin:0">Sends your numbers, height, bodyweight trend, pain flags and session lengths to Claude for a coach-style read on inefficiencies and what to change inside your 45 minutes. It runs when you tap.</div>'+
@@ -914,7 +944,7 @@ var Rules=(function(){
     var a=b.dataset.act,d=b.dataset,D=U.day?dayById(U.day):null,lg=D&&U.view==='session'?getLog(D.id):null;
     if(a==='tstop'){stopTimer();return}
     if(a==='tnext'){if(T.i<T.ph.length-1)begin(T.i+1);else stopTimer();return}
-    if(a==='tab'){U.view=d.v;U.msg='';U.ask=false}
+    if(a==='tab'){U.view=d.v;U.msg='';U.ask=false;if(d.v==='review')ghReview(false)}
     else if(a==='unit'||a==='sunit'){convert(d.u)}
     else if(a==='start'){LIFTS.forEach(function(L){S.tm[L.k]=Core.rnd(exEst(L.k)*.9,inc(),'near')});
       var ob=parseFloat(U.obw);if(ob>0)S.bw.push({d:today(),w:ob});S.onboarded=true;U.view='today'}
@@ -966,6 +996,7 @@ var Rules=(function(){
       if(rp&&!/^[\w.-]+\/[\w.-]+$/.test(rp)){GH.msg='Repo should look like MHNZ666/iron-and-mat-data.';paintGh();return}
       var o=ghCfg();o.repo=rp;o.token=tk;setGh(o);GH.msg=rp&&tk?'Saved. Tap Back up now to test it.':'Cleared.';V();return}
     else if(a==='ghnow'){ghBackup(true);return}
+    else if(a==='rtm'){if(S.remote){S.tm[d.k]=+d.v;S.remote.applied[d.k]=true}}
     else if(a==='ghrestore'){if(!GH.ask){GH.ask=true;V();return}ghRestore();return}
     else if(a==='apisave'){var url=$('apiurl').value.trim(),code=$('apicode').value.trim(),m=$('apimsg');
       if(url&&!/^https:\/\//.test(url)){m.textContent='The address must start with https://';return}
@@ -989,6 +1020,7 @@ var Rules=(function(){
   });
   V();
   setTimeout(initSync,0);
+  setTimeout(function(){ghReview(true)},800);
 })();
 </script>
 </body>

@@ -13,6 +13,8 @@ Training data stays on the phone (browser storage). It can also back up to a **p
 2. Create a fine-grained token at github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens. Repository access: **Only select repositories** → `iron-and-mat-data`. Permissions: **Contents: Read and write**. Set an expiry (for example one year).
 3. In the app: Settings → GitHub backup. Paste the token, check the repo name, Save, then tap Back up now.
 
+Each backup also writes `summary.md`, a plain-language training summary. A scheduled Claude session reads it every Sunday evening and writes `review.json` to the same private repo; the app shows that review in the Review tab, with suggested training-max changes as buttons you choose to apply.
+
 The app backs up after each finished session and each new week or cycle, and you can restore on any phone. The token is kept on the phone only and is never written into the backup.
 
 ## Claude review outside Claude (optional)
