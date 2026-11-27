@@ -767,7 +767,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='5.3.1 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='5.3.2 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -2171,6 +2171,8 @@ var INFO={
   }
   function addReport(rp){S.reports=S.reports||[];if(rp.kind==='weekly'&&S.reports.some(function(x){return x.kind==='weekly'&&x.date===rp.date&&(x.text===rp.text||x.basedOn&&x.basedOn===rp.basedOn)}))return;S.reports.push(rp);if(S.reports.length>200)S.reports=S.reports.slice(-200);save()}
   function migrateReports(){var ch=false;S.reports=S.reports||[];
+    S.reports.forEach(function(r){if(r.raw&&!r.fixed){var j=findReport(parseJSON(r.raw));if(j){var n=normReport(j,r.kind);if(n.sections.length>=r.sections.length){r.sections=n.sections;r.changes=n.changes.length?n.changes:r.changes;if(n.title&&n.title!=='Training report')r.title=n.title;r.text=n.text||r.text}}
+      r.cut=false;r.fixed=1;ch=true}});
     if(S.remote&&!S.reports.some(function(x){return x.kind==='weekly'})){addReport(normReport({date:S.remote.date,text:S.remote.text,changes:S.remote.notes,tm:S.remote.tm,subs:S.remote.subs},'weekly'));ch=true}
     if(S.claude&&S.claude.text&&!S.reports.some(function(x){return x.kind==='instant'})){var rp=normReport({text:S.claude.text,date:ymdOf(S.claude.t||Date.now())},'instant');rp.t=S.claude.t||rp.t;S.reports.push(rp);ch=true}
     if(ch){save();V()}}
@@ -2239,7 +2241,15 @@ var INFO={
       'Rules: plain text inside strings (no markdown, no asterisks). Each section 50-130 words; the Summary 120-200 words. Keep the whole reply under 2,500 words. Use "tm" only for lifts whose training max should change now, rounded to '+inc()+' kg and within 15% of the current value. Use "subs" only for exercises with a pain note. In "targets", give next-session targets for each cardio type with data: if average heart rate was below the target band, raise resistance, watts, speed or incline by about 5%; if it was inside the band, raise by about 2-3%; if above, hold or lower by about 5%. Only include fields that suit the machine used (watts or level for bikes and rowers, speed and incline for treadmills). Do not diagnose injuries; recommend a physio for repeated pain of 4 or more.'
     ]).join('\n');
   }
-  function parseJSON(t){var m=String(t||'').match(/\{[\s\S]*\}/);if(!m)return null;try{return JSON.parse(m[0])}catch(e){return null}}
+  function fixJSON(s){
+    // Claude sometimes puts real line breaks or tabs inside text, or a trailing comma: make it valid JSON
+    var out='',inS=false,esc2=false;for(var i=0;i<s.length;i++){var c=s[i];
+      if(inS){if(esc2){out+=c;esc2=false;continue}if(c==='\\'){out+=c;esc2=true;continue}if(c==='"'){inS=false;out+=c;continue}
+        if(c==='\n'){out+='\\n';continue}if(c==='\r')continue;if(c==='\t'){out+='\\t';continue}out+=c}
+      else{if(c==='"')inS=true;out+=c}}
+    return out.replace(/,\s*([}\]])/g,'$1');
+  }
+  function parseJSON(t){var s=String(t||'').replace(/```(?:json)?/g,''),m=s.match(/\{[\s\S]*\}/);if(!m)return null;try{return JSON.parse(m[0])}catch(e){try{return JSON.parse(fixJSON(m[0]))}catch(e2){return null}}}
   function findReport(o,depth){
     // the report object, even if Claude wrapped it, e.g. {"report": {...}}
     if(!o||typeof o!=='object'||(depth||0)>4)return null;if(Array.isArray(o))return null;
@@ -2255,10 +2265,10 @@ var INFO={
   }
   function runReport(per){
     if(U.rbusy)return;U.rbusy=true;U.rerr='';U.rpick=false;V();
-    var pr=periodRange(per),card=snapshot5(per),p=reportPrompt(per),done=function(text,stop){var j0=parseJSON(text),j=findReport(j0)||rescueReport(text);if(j&&!j.sections&&j.summary)j.sections=[{h:'Summary',t:String(j.summary)}];rp=normReport(j||{text:String(text||'').replace(/^[\s\S]*?\{/,'{')},'instant');if(!j)rp.title='Training report';if(j&&j.cut||stop==='max_tokens')rp.cut=true;rp.raw=String(text||'').slice(0,30000);if(!rp.sections.length&&!rp.text)rp.text=rp.raw?rp.raw.replace(/[{}\[\]"]/g,' ').replace(/\s+/g,' ').trim().slice(0,8000):'The report came back empty. Tap Create a report now to try again.';rp.per=per;rp.range=pr.label;rp.card=card;addReport(rp);U.ropen=rp.id;rp.seen=true;U.rbusy=false;save();V()},
+    var pr=periodRange(per),card=snapshot5(per),p=reportPrompt(per),done=function(text,stop){var j0=parseJSON(text),j=findReport(j0)||rescueReport(text);if(j&&!j.sections&&j.summary)j.sections=[{h:'Summary',t:String(j.summary)}];rp=normReport(j||{text:String(text||'').replace(/^[\s\S]*?\{/,'{')},'instant');if(!j)rp.title='Training report';if(stop==='max_tokens')rp.cut=true;rp.raw=String(text||'').slice(0,30000);if(!rp.sections.length&&!rp.text)rp.text=rp.raw?rp.raw.replace(/[{}\[\]"]/g,' ').replace(/\s+/g,' ').trim().slice(0,8000):'The report came back empty. Tap Create a report now to try again.';rp.per=per;rp.range=pr.label;rp.card=card;addReport(rp);U.ropen=rp.id;rp.seen=true;U.rbusy=false;save();V()},
       fail=function(msg){U.rbusy=false;U.rerr=msg;V()};
     if(inClaude()){window.claude.use('sample').then(function(sample){if(!sample)throw {code:'not_granted'};return sample(p,{modelTier:'complex',cache:false})}).then(function(r){done(r.text)},function(e){fail(e&&e.code==='rate_limited'?'Claude is busy. Try again in a few minutes.':'The report did not finish. Try again.')});return}
-    srv('/review',{prompt:p,max_tokens:per==='today'?4000:7500}).then(function(j){done(j.text,j.stop)},function(e){fail(e&&e.status===501?'Reports need the Anthropic key on your server.':srvErr(e,'Claude'))});
+    srv('/review',{prompt:p,max_tokens:per==='today'?6000:8000}).then(function(j){done(j.text,j.stop)},function(e){fail(e&&e.status===501?'Reports need the Anthropic key on your server.':srvErr(e,'Claude'))});
   }
   function applyR(r,type,k){
     if(type==='tm'){var v=Core.rnd(+r.tm[k],inc(),'near'),cur=+S.tm[k];if(v>0&&cur&&Math.abs(v-cur)/cur<=0.15){S.tm[k]=v;r.applied['tm-'+k]=true}}
