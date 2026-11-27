@@ -27,6 +27,20 @@ export default {
     };
     const reply = (status, body) =>
       new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
+    // For slow jobs: answer at once, send a space every 10 s so Cloudflare's 100-second limit never trips,
+    // then the JSON result (errors carry "_status").
+    const slow = (job) => {
+      const { readable, writable } = new TransformStream();
+      const w = writable.getWriter(), enc = new TextEncoder();
+      const tick = setInterval(() => { w.write(enc.encode(" ")).catch(() => {}); }, 10000);
+      (async () => {
+        let out;
+        try { out = await job(); } catch (e) { out = { _status: 502, error: "Server error." }; }
+        clearInterval(tick);
+        try { await w.write(enc.encode(JSON.stringify(out))); await w.close(); } catch (e) {}
+      })();
+      return new Response(readable, { status: 200, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" } });
+    };
 
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
     if (request.method === "GET") return reply(200, { ok: true, message: "Iron and Mat server is running." });
@@ -111,19 +125,21 @@ export default {
         "{\"date\": \"YYYY-MM-DD\" (collection date if shown, else report date, else null), \"lab\": \"lab name or null\", \"markers\": [{\"name\": \"marker name as printed\", \"key\": \"short lowercase standard name, e.g. total testosterone, free testosterone, oestradiol, shbg, haematocrit, haemoglobin, psa, lh, fsh, prolactin, ferritin, iron, vitamin d, hba1c, glucose, insulin, total cholesterol, ldl, hdl, triglycerides, apob, alt, ast, ggt, creatinine, egfr, urea, crp, tsh, free t4, cortisol\", " +
         "\"value\": number or null, \"text\": \"the value as printed if not a plain number, else empty\", \"unit\": \"unit as printed\", \"low\": number or null, \"high\": number or null (reference range), \"flag\": \"H, L or empty, as marked on the report or by comparing with the range\"}]}. " +
         "Copy numbers exactly as printed; never guess. Do not interpret or give medical advice.";
+      return slow(async () => {
       const block = media === "application/pdf" ? { type: "document", source: { type: "base64", media_type: "application/pdf", data } } : { type: "image", source: { type: "base64", media_type: media, data } };
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-        body: JSON.stringify({ model: MODEL, max_tokens: 6000, messages: [{ role: "user", content: [block, { type: "text", text: ask }] }] }),
+        body: JSON.stringify({ model: MODEL, max_tokens: 20000, messages: [{ role: "user", content: [block, { type: "text", text: ask }] }] }),
       });
-      if (!r.ok) return reply(r.status === 429 ? 429 : r.status === 413 ? 413 : 502, { error: "Anthropic API error " + r.status });
+      if (!r.ok) return { _status: r.status === 429 ? 429 : r.status === 413 ? 413 : 502, error: "Anthropic API error " + r.status };
       const j = await r.json();
       const t = (j.content || []).filter((c) => c.type === "text").map((c) => c.text).join("");
       const m = t.match(/\{[\s\S]*\}/);
       let out = null; try { out = m ? JSON.parse(m[0]) : null; } catch (e) { out = null; }
-      if (!out || !Array.isArray(out.markers)) return reply(502, { error: "Could not read that report." });
-      return reply(200, out);
+      if (!out || !Array.isArray(out.markers)) return { _status: 502, error: "Could not read that report." };
+      return out;
+      });
     }
 
     if (path === "/cardio/read") {
@@ -138,7 +154,7 @@ export default {
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-        body: JSON.stringify({ model: MODEL, max_tokens: 300, messages: [{ role: "user", content: [
+        body: JSON.stringify({ model: MODEL, max_tokens: 6000, messages: [{ role: "user", content: [
           { type: "image", source: { type: "base64", media_type: "image/jpeg", data: img } },
           { type: "text", text: ask } ] }] }),
       });
@@ -157,7 +173,8 @@ export default {
       if (!env.ANTHROPIC_API_KEY) return reply(501, { error: "Instant reviews are not set up on this server." });
       const prompt = String(body.prompt || "");
       if (!prompt || prompt.length > 80000) return reply(400, { error: "Missing or oversized prompt." });
-      const maxTok = Math.min(8000, Math.max(300, parseInt(body.max_tokens, 10) || 900));
+      // The model thinks before it writes, and thinking counts toward max_tokens, so leave plenty of room.
+      const maxTok = Math.min(32000, Math.max(2000, parseInt(body.max_tokens, 10) || 16000));
       if (body.stream) {
         // Stream the report back as Claude writes it, so long reports never hit Cloudflare's 100-second limit.
         // The body is plain text, ending with a line "\u0000STOP:<reason>" (or "\u0000ERROR:<message>").

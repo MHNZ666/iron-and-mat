@@ -767,7 +767,7 @@ var INFO={
 </script>
 <script>
 (function(){
-  var KEY='iron-mat-v1',VERSION='5.3.3 (28 Nov 2026)';
+  var KEY='iron-mat-v1',VERSION='5.3.4 (28 Nov 2026)';
   var LIFTS=[
     {k:'press',n:'Overhead Press',up:true},{k:'dead',n:'Deadlift',up:false},
     {k:'bench',n:'Bench Press',up:true},{k:'squat',n:'Squat',up:false}
@@ -879,7 +879,7 @@ var INFO={
       if(!r||typeof r.text!=='string')return;
       var old=S.remote||{};if(old.date===r.date&&old.text===r.text)return;
       S.remote={date:String(r.date||''),text:r.text.slice(0,6000),tm:r.tm&&typeof r.tm==='object'?r.tm:{},notes:Array.isArray(r.changes)?r.changes.slice(0,8).map(String):[],subs:cleanSubs(r.subs),applied:{},seen:false};
-      mergeCardio(r.cardio);var wr=normReport(r,'weekly');wr.per='week';wr.card=snapshot5('week');addReport(wr);
+      mergeCardio(r.cardio);var wr=normReport(r,'weekly');(S.labs||[]).forEach(function(t){if(!t.disc&&t.d<=wr.date)t.disc=wr.date});wr.per='week';wr.card=snapshot5('week');addReport(wr);
       save();V();
     }).catch(function(){});
   }
@@ -1681,7 +1681,7 @@ var INFO={
   function setWh(o){try{localStorage.setItem(WKEY,JSON.stringify(o))}catch(e){}}
   function srv(path,body){var c=apiCfg();
     return fetch(c.url.replace(/\/$/,'')+path,{method:'POST',headers:{'Content-Type':'application/json','X-Access-Code':c.code||''},body:JSON.stringify(body)})
-      .then(function(r){return r.json().catch(function(){return {}}).then(function(j){if(!r.ok)throw {status:r.status,msg:j&&j.error};return j})})}
+      .then(function(r){return r.json().catch(function(){return {}}).then(function(j){if(!r.ok)throw {status:r.status,msg:j&&j.error};if(j&&j._status>=400)throw {status:j._status,msg:j.error};return j})})}
   function srvReport(body){
     // reports stream back as Claude writes them; an older server still answers with JSON
     var c=apiCfg();body.stream=true;
@@ -1846,6 +1846,33 @@ var INFO={
     if(last){h+='<div class="note" style="color:var(--ink)">This week: <b>'+st.thisWk+' '+esc(st.u)+'</b> · last 4 weeks: '+st.avgWk+' '+esc(st.u)+' a week'+(st.interval?' · usually every '+st.interval+' days':'')+(st.next?' · next due about <b>'+new Date(st.next).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+'</b>':'')+'</div>';
       h+='<div style="overflow-x:auto"><table class="st"><tr><th>When</th><th>Amount</th><th>Site</th><th></th></tr>'+doseList().slice(-8).reverse().map(function(x){return '<tr><td>'+new Date(x.t).toLocaleString('en-AU',{weekday:'short',day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})+'</td><td>'+x.amount+' '+esc(x.unit)+'</td><td>'+esc(x.site||'')+(x.note?' · '+esc(x.note):'')+'</td><td><button class="linkb" type="button" data-act="trtdel" data-id="'+x.id+'">'+(U.trtdel===x.id?'Sure?':'Delete')+'</button></td></tr>'}).join('')+'</table></div>'}
     return h;
+  }
+  /* ---------- bloodwork in reports: new tests in detail, older ones by date, and links with performance ---------- */
+  function around(d,days){
+    // recovery, sleep, strength, bodyweight and energy in the weeks around a date
+    var a=addDays(d,-days),b=addDays(d,days),W=(S.wh||[]).filter(function(x){return x.d>=a&&x.d<=b}),o={};
+    o.rec=avg(W.map(function(x){return x.rec}));o.hrv=avg(W.map(function(x){return x.hrv}));o.rhr=avg(W.map(function(x){return x.rhr}));o.sleepH=avg(W.map(function(x){return x.sleepH}));
+    o.bw=bwAt(b);var en=[];doneLogs().forEach(function(x){var ld=logDate(x.l);if(ld>=a&&ld<=b&&x.l.fb&&x.l.fb.energy)en.push(x.l.fb.energy)});o.energy=avg(en);
+    o.est={};['squat','bench','dead','press'].forEach(function(k){var e=estAt(k,b);if(e)o.est[k]=Math.round(e)});
+    var parts=[];if(o.rec!=null)parts.push('recovery '+Math.round(o.rec)+'%');if(o.hrv!=null)parts.push('HRV '+Math.round(o.hrv));if(o.rhr!=null)parts.push('resting HR '+Math.round(o.rhr));if(o.sleepH!=null)parts.push('sleep '+Math.round(o.sleepH*10)/10+' h');
+    if(o.bw)parts.push('bodyweight '+o.bw+' kg');if(o.energy!=null)parts.push('energy '+Math.round(o.energy*10)/10+'/3');var ek=Object.keys(o.est);if(ek.length)parts.push('est. max '+ek.map(function(k){return k+' '+o.est[k]}).join(', '));
+    return parts.join(', ')||'no training or WHOOP data yet';
+  }
+  function labLines(){
+    var L=(S.labs||[]).slice().sort(function(a,b){return a.d<b.d?-1:1}),out=[];if(!L.length)return out;
+    var last=L[L.length-1],prev=L.length>1?L[L.length-2]:null,show=function(m){return m.name+' '+(m.value!=null?m.value:m.text)+' '+m.unit+(m.low!=null||m.high!=null?' (range '+(m.low!=null?m.low:'')+'-'+(m.high!=null?m.high:'')+')':'')+(flagOf(m)?' '+flagOf(m):'')};
+    var days=Math.round((new Date(today())-new Date(last.d))/864e5);
+    var fresh=L.filter(function(t){return !t.disc});
+    if(!fresh.length){
+      out.push('Bloodwork: latest test '+last.d+' ('+days+' days ago), already discussed in the report of '+last.disc+'. Do NOT restate its values. Mention it only by date if relevant; there is no new test.');
+    }else{
+      fresh.forEach(function(t){var i=L.indexOf(t),pv=i>0?L[i-1]:null,ch=[];
+        if(pv)t.markers.forEach(function(m){if(m.value==null)return;var q=pv.markers.filter(function(x){return x.key===m.key&&x.value!=null})[0];if(q&&q.value!==m.value)ch.push(m.name+' '+q.value+' -> '+m.value+' '+m.unit)});
+        out.push('NEW bloodwork, test dated '+t.d+(t.lab?' ('+t.lab+')':'')+': '+t.markers.filter(function(m){return KEYM.indexOf(m.key)>=0||flagOf(m)}).map(show).join(', ')+'.'+(pv?' Changes since the previous test on '+pv.d+': '+(ch.join(', ')||'none of note')+'.':' This is the first test on record.'))});
+      out.push('For each NEW test: give its date, what changed since the test before it, and what the numbers could mean for training, recovery and body composition. Tests not marked NEW were covered in earlier reports: reference them by date only. You are not a doctor: flag out-of-range results only as something to discuss with their doctor.');
+    }
+    if(L.length>=1&&(S.wh||[]).length)out.push('Performance around each blood test (2 weeks either side), for spotting relationships between bloodwork and training: '+L.map(function(t){return t.d+': '+t.markers.filter(function(m){return KEYM.indexOf(m.key)>=0&&m.value!=null}).slice(0,8).map(function(m){return m.key+' '+m.value}).join(', ')+' | '+around(t.d,14)}).join(' || ')+'. '+(L.length>=2?'Look for relationships between marker changes and changes in recovery, energy, strength and bodyweight; say how confident you are given the number of tests.':'With one test there is no relationship to judge yet; say so only if relevant.'));
+    return out;
   }
   function evCompare(ev){
     var W=S.wh||[],pre=W.filter(function(x){return x.d<ev.d&&x.d>=addDays(ev.d,-21)}),post=W.filter(function(x){return x.d>=ev.d});
@@ -2176,12 +2203,13 @@ var INFO={
   function normReport(r,kind){
     var raw=Array.isArray(r.sections)?r.sections:r.sections&&typeof r.sections==='object'?Object.keys(r.sections).map(function(k){return {h:k,t:r.sections[k]}}):[];
     var secs=raw.slice(0,14).map(function(s){return {h:String(s&&(s.h||s.heading||s.title||s.name)||'').slice(0,60),t:String(s&&(s.t||s.text||s.body||s.content)||'').slice(0,3000)}}).filter(function(s){return s.t});
-    return {id:(kind==='weekly'?'w':'i')+(r.date||'')+'-'+Date.now().toString(36),t:Date.now(),date:String(r.date||today()),kind:kind,title:String(r.title||(kind==='weekly'?'Weekly review':'Training report')).slice(0,90),
+    return {id:(kind==='weekly'?'w':'i')+(r.date||'')+'-'+Date.now().toString(36),t:Date.now(),date:String(r.date||today()),kind:kind,title:String(r.title||(kind==='weekly'?'Weekly review':'Training report')).slice(0,160),
       text:String(r.text||'').slice(0,8000),sections:secs,changes:Array.isArray(r.changes)?r.changes.slice(0,8).map(function(x){return String(x).slice(0,300)}):[],
       tm:r.tm&&typeof r.tm==='object'?r.tm:{},cut:!!r.cut,raw:r.raw?String(r.raw).slice(0,30000):'',subs:cleanSubs(r.subs),targets:cleanTargets(r.targets),applied:{},seen:false,basedOn:String(r.basedOn||'')}
   }
   function addReport(rp){S.reports=S.reports||[];if(rp.kind==='weekly'&&S.reports.some(function(x){return x.kind==='weekly'&&x.date===rp.date&&(x.text===rp.text||x.basedOn&&x.basedOn===rp.basedOn)}))return;S.reports.push(rp);if(S.reports.length>200)S.reports=S.reports.slice(-200);save()}
   function migrateReports(){var ch=false;S.reports=S.reports||[];
+    if(!S.repClear1){/* one-time: remove the test reports made while reports were being fixed */S.reports=[];S.remote=null;S.claude=null;S.repClear1=1;ch=true}
     S.reports.forEach(function(r){if(r.raw&&!r.fixed){var j=findReport(parseJSON(r.raw));if(j){var n=normReport(j,r.kind);if(n.sections.length>=r.sections.length){r.sections=n.sections;r.changes=n.changes.length?n.changes:r.changes;if(n.title&&n.title!=='Training report')r.title=n.title;r.text=n.text||r.text}}
       r.cut=false;r.fixed=1;ch=true}});
     if(S.remote&&!S.reports.some(function(x){return x.kind==='weekly'})){addReport(normReport({date:S.remote.date,text:S.remote.text,changes:S.remote.notes,tm:S.remote.tm,subs:S.remote.subs},'weekly'));ch=true}
@@ -2209,7 +2237,7 @@ var INFO={
     var pn=S.pain.filter(function(x){return inR(x.d)});L.push('Pain flags in this period: '+(pn.map(function(x){return x.d+' '+x.part+(x.side?' '+x.side:'')+' '+x.v+'/10 on '+x.ex+(x.addr?' (addressing)':' (short-term)')+(x.trig?', caused by '+x.trig:'')+(x.note?': '+x.note:'')}).join('; ')||'none')+'.');
     var iss=(S.issues||[]).filter(function(is){return is.active||inR(is.resolved)});if(iss.length)L.push('Issues being addressed: '+iss.map(function(is){var wa=weekAvgs(is),dr=issueDrill(is);return is.part+(is.side?' '+is.side:'')+' since '+is.start+' (linked: '+is.exNames.join(', ')+'), drill '+(dr?EX[dr].n+' level '+((is.lvl||0)+1):'none (knee: warm-up covers it)')+', weekly pain '+wa.map(function(x){return x.v}).join(' > ')+' ('+trendWord(wa)+')'+(is.active?'':', resolved '+is.resolved)}).join('; ')+'.');
     var dz=(S.doses||[]).filter(function(x){return inR(ymdOf(x.t))});if(dz.length)L.push('Doses logged in this period ('+((S.trt&&S.trt.name)||'TRT')+', as prescribed): '+dz.map(function(x){return ymdOf(x.t)+' '+hhmm(x.t)+' '+x.amount+' '+x.unit+(x.site?' '+x.site:'')}).join('; ')+'.');
-    var lz=(S.labs||[]).filter(function(t){return inR(t.d)});if(lz.length)L.push('Blood tests in this period: '+lz.map(function(t){return t.d+': '+t.markers.map(function(m){return m.name+' '+(m.value!=null?m.value:m.text)+' '+m.unit+(flagOf(m)?' '+flagOf(m):'')}).join(', ')}).join(' || ')+'.');
+    var lz=(S.labs||[]).filter(function(t){return inR(t.d)});if(lz.length)L.push('Blood tests dated in this period: '+lz.map(function(t){return t.d+(t.disc?' (already discussed in the report of '+t.disc+')':' (new)')}).join(', ')+'. Details are in the bloodwork lines above.');
     var bws=(S.bw||[]).filter(function(x){return inR(x.d)});L.push('Bodyweight in this period: '+(bws.map(function(x){return x.d+' '+x.w+' kg'+(x.fat?' ('+x.fat+'% fat)':'')+(x.src?' via '+x.src:'')}).join('; ')||'no new weigh-in; latest '+bwNow()+' kg')+'.');
     return L;
   }
@@ -2276,10 +2304,10 @@ var INFO={
   }
   function runReport(per){
     if(U.rbusy)return;U.rbusy=true;U.rerr='';U.rpick=false;V();
-    var pr=periodRange(per),card=snapshot5(per),p=reportPrompt(per),done=function(text,stop){var j0=parseJSON(text),j=findReport(j0)||rescueReport(text);if(j&&!j.sections&&j.summary)j.sections=[{h:'Summary',t:String(j.summary)}];rp=normReport(j||{text:String(text||'').replace(/^[\s\S]*?\{/,'{')},'instant');if(!j)rp.title='Training report';if(stop==='max_tokens')rp.cut=true;rp.raw=String(text||'').slice(0,30000);if(!rp.sections.length&&!rp.text)rp.text=rp.raw?rp.raw.replace(/[{}\[\]"]/g,' ').replace(/\s+/g,' ').trim().slice(0,8000):'The report came back empty. Tap Create a report now to try again.';rp.per=per;rp.range=pr.label;rp.card=card;addReport(rp);U.ropen=rp.id;rp.seen=true;U.rbusy=false;save();V()},
+    var pr=periodRange(per),card=snapshot5(per),p=reportPrompt(per),done=function(text,stop){var j0=parseJSON(text),j=findReport(j0)||rescueReport(text);if(j&&!j.sections&&j.summary)j.sections=[{h:'Summary',t:String(j.summary)}];rp=normReport(j||{text:String(text||'').replace(/^[\s\S]*?\{/,'{')},'instant');if(!j)rp.title='Training report';if(stop==='max_tokens')rp.cut=true;rp.raw=String(text||'').slice(0,30000);if(rp.sections.length)(S.labs||[]).forEach(function(t){if(!t.disc)t.disc=rp.date});if(!rp.sections.length&&!rp.text)rp.text=rp.raw?rp.raw.replace(/[{}\[\]"]/g,' ').replace(/\s+/g,' ').trim().slice(0,8000):'The report came back empty. Tap Create a report now to try again.';rp.per=per;rp.range=pr.label;rp.card=card;addReport(rp);U.ropen=rp.id;rp.seen=true;U.rbusy=false;save();V()},
       fail=function(msg){U.rbusy=false;U.rerr=msg;V()};
     if(inClaude()){window.claude.use('sample').then(function(sample){if(!sample)throw {code:'not_granted'};return sample(p,{modelTier:'complex',cache:false})}).then(function(r){done(r.text)},function(e){fail(e&&e.code==='rate_limited'?'Claude is busy. Try again in a few minutes.':'The report did not finish. Try again.')});return}
-    srvReport({prompt:p,max_tokens:per==='today'?6000:8000}).then(function(j){done(j.text,j.stop)},function(e){fail(e&&e.status===501?'Reports need the Anthropic key on your server.':srvErr(e,'Claude'))});
+    srvReport({prompt:p,max_tokens:per==='today'?20000:32000}).then(function(j){done(j.text,j.stop)},function(e){fail(e&&e.status===501?'Reports need the Anthropic key on your server.':srvErr(e,'Claude'))});
   }
   function applyR(r,type,k){
     if(type==='tm'){var v=Core.rnd(+r.tm[k],inc(),'near'),cur=+S.tm[k];if(v>0&&cur&&Math.abs(v-cur)/cur<=0.15){S.tm[k]=v;r.applied['tm-'+k]=true}}
@@ -2295,6 +2323,7 @@ var INFO={
     var rs=(S.reports||[]).slice().sort(function(a,b){return b.t-a.t}),can=inClaude()||!!apiCfg().code;
     var h='<h1>Reports</h1><p class="sub">Every report is kept here: the Sunday review and any you create yourself. Suggested changes become buttons; nothing changes until you tap one.</p>';
     h+='<div class="card" style="margin-top:14px"><button class="cta" type="button" data-act="rnew"'+(U.rbusy||!can?' disabled':'')+'>'+(U.rbusy?'Writing your report…':'Create a report now')+'</button><div class="note">'+(U.rbusy?'An in-depth report takes 20–40 seconds.':can?'An in-depth report on your training so far, written now. About 2–5 cents each.':'Add your server access code in Settings to create reports.')+'</div>'+(U.rerr?'<div class="note" style="color:var(--sig)">'+esc(U.rerr)+'</div>':'')+'</div>';
+    if(rs.length)h+='<div style="margin-top:8px;text-align:right"><button class="linkb" type="button" data-act="repclear">'+(U.repclear?'Tap again to delete all '+rs.length+' reports':'Clear all reports')+'</button></div>';
     if(!rs.length)h+='<div class="card" style="margin-top:10px"><div class="note" style="margin:0">No reports yet. Your first Sunday review arrives on Sunday evening.</div></div>';
     h+='<div class="stack" style="margin-top:10px">';
     rs.forEach(function(r){var open=U.ropen===r.id,first=(r.sections[0]&&r.sections[0].t||r.text||'').slice(0,140);
@@ -2396,7 +2425,7 @@ var INFO={
         return logDate(x.l)+' '+x.id+': '+ss.length+' sets, avg '+fmtSec(avg(ss.map(function(s){return s.e-s.s})))+' per set'+(ss.some(function(s){return s.est})?' (estimated)':'')+(t?', top set '+t.w+'x'+t.r+(t.max?' peak HR '+t.max+(t.rec!=null?' drop '+t.rec+' in 60s':''):''):'')+(x.l.hrSum?', session HR avg '+x.l.hrSum.avg+' max '+x.l.hrSum.max:'')+(x.l.wh&&x.l.wh.z?', WHOOP zones min '+x.l.wh.z.join('/'):'')}).join('; ')+'.');
       var hi=hrInsights();if(hi.length)lines.push('Notable heart-rate and effort changes: '+hi.join(' ')+' Report on these where they matter.');})();
     if((S.issues||[]).length)lines.push('Pain being addressed (one rehab drill per joint, rated weekly on the linked movements): '+(S.issues||[]).filter(function(is){return is.active}).map(function(is){var wa=weekAvgs(is),dr=issueDrill(is);return is.part+' since '+is.start+', drill '+(dr?EX[dr].n+' level '+((is.lvl||0)+1):'none')+', weekly pain '+wa.map(function(x){return x.v}).join(' > ')}).join('; ')+'.');
-    (function(){var L=(S.labs||[]).slice(-3);if(L.length)lines.push('Bloodwork (most recent last): '+L.map(function(t){return t.d+(t.lab?' '+t.lab:'')+': '+t.markers.filter(function(m){return KEYM.indexOf(m.key)>=0||flagOf(m)}).map(function(m){return m.name+' '+(m.value!=null?m.value:m.text)+' '+m.unit+(m.low!=null||m.high!=null?' (range '+(m.low!=null?m.low:'')+'-'+(m.high!=null?m.high:'')+')':'')+(flagOf(m)?' '+flagOf(m):'')}).join(', ')}).join(' || ')+'. Use these as context for recovery, energy, body composition and training; you are not a doctor, so flag out-of-range results only as something to discuss with their doctor.');
+    (function(){var bl=labLines();bl.forEach(function(x){lines.push(x)});
       var ts=trtStats();if(ts.last)lines.push('The athlete is on prescribed '+((S.trt&&S.trt.name)||'TRT')+': this week '+ts.thisWk+' '+ts.u+', last 4 weeks average '+ts.avgWk+' '+ts.u+' a week'+(ts.interval?', usually every '+ts.interval+' days':'')+'. Never suggest changing the dose or timing; you may note patterns (for example energy or recovery across the dosing interval) and suggest raising them with the prescriber.');})();
     (S.events||[]).forEach(function(ev){var c=evCompare(ev);lines.push('Health or life change on '+ev.d+': '+ev.t+'. Averages before ('+c.npre+' days) vs since ('+c.npost+' days): '+(c.rows.map(function(r){return r.n+' '+r.a+' -> '+r.b}).join(', ')||'not enough WHOOP data yet')+(c.energy?'; session energy rating (1-3) '+(c.energy.a!=null?c.energy.a+' -> ':'')+c.energy.b:'')+'. Comment on whether the data supports what the athlete has noticed, and what it means for training.')});
     lines.push('The app\'s own rule-based flags: '+(A.findings.map(function(f){return f.title}).join('; ')||'none')+'.');
@@ -2579,6 +2608,7 @@ var INFO={
     else if(a==='xsave'){var f2=U.xw,rec2={id:f2.id||('x'+Date.now()),d:f2.d,type:f2.type,start:f2.start||'',min:num(f2.min),dist:num(f2.dist),hr:num(f2.hr),rpe:f2.rpe||null,note:String(f2.note||'').slice(0,500)};
       S.extra=(S.extra||[]).filter(function(e){return e.id!==rec2.id}).concat([rec2]).sort(function(p,q){return p.d<q.d?-1:1});U.xw=null;setTimeout(function(){ghBackup(false)},300)}
     else if(a==='rnew'){U.rpick=true}
+    else if(a==='repclear'){if(U.repclear){S.reports=[];S.remote=null;S.claude=null;U.repclear=false;U.ropen=null}else U.repclear=true}
     else if(a==='rper'){runReport(d.v);return}
     else if(a==='rpclose'){U.rpick=false}
     else if(a==='rpbg'){if(ev.target===b)U.rpick=false;else return}
